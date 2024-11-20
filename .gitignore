@@ -1,0 +1,6 @@
+# Ignore IntelliJ IDEA project files
+.idea/
+BDMSpikeModel.iml
+
+# Ignore macOS system files
+.DS_Store
