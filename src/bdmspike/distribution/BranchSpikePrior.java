@@ -1,7 +1,6 @@
 package bdmspike.distribution;
 
-import bdmmprime.parameterization.Parameterization;
-import bdmmprime.util.Utils;
+import bdmmprime.parameterization.*;
 import beast.base.core.Description;
 import beast.base.core.Input;
 import beast.base.evolution.tree.Node;
@@ -15,7 +14,6 @@ import org.apache.commons.math.distribution.GammaDistribution;
 import org.apache.commons.math.distribution.GammaDistributionImpl;
 
 import java.util.*;
-
 
 // Elements borrowed from <GammaSpikeModel>  Copyright (C) <2024>  <Jordan Douglas>
 
@@ -56,7 +54,6 @@ public class BranchSpikePrior extends Distribution {
         deathRates = parameterization.getDeathRates();
         samplingRates = parameterization.getSamplingRates();
         rhoValues = parameterization.getRhoValues();
-
         shape = shapeInput.get();
     }
 
@@ -105,77 +102,18 @@ public class BranchSpikePrior extends Distribution {
     }
 
 
-
-    protected SortedSet<Double> changeTimeSet = new TreeSet<>(Utils::precisionLimitedComparator);
-    /**
-     * Combine times from individual time arrays, removing duplicates.
-     *
-     * @param changeTimeArrays One or more arrays to combine.
-     * @return combined time array
-     */
-    public double[] combineAndSortTimes(double[] ... changeTimeArrays) {
-        double[] destArray = new double[changeTimeSet.size()];
-        changeTimeSet.clear();
-
-        for (double[] changeTimeArray : changeTimeArrays) {
-            for (double t : changeTimeArray)
-                changeTimeSet.add(t);
-        }
-
-        int i=0;
-        for (double changeTime : changeTimeSet)
-            destArray[i++] = changeTime;
-
-        return destArray;
-    }
-
-
-//    // Get a list of unique time points where any rate changes occur
-//    public static List<Double> getTimeIntervals(double[]... rateChangeTimes) {
-//        TreeSet<Double> uniqueTimes = new TreeSet<>();
-//        for (double[] times : rateChangeTimes) {
-//            for (double time : times) {
-//                uniqueTimes.add(time);
-//            }
-//        }
-//        return new ArrayList<>(uniqueTimes);
-//    }
-//    List<Double> timeIntervals = getTimeIntervals(birthRateChangeTimes, deathRateChangeTimes, samplingRateChangeTimes,
-//            rhoSamplingTimes);
-
-
-    // Find the interval in which a given time input lies and return the associated rate for that interval
-    public double getRate(double[][] rates, double[] rateChangeTimes, double time) {
-        // Check if the time is before the first change time
-        if (time < rateChangeTimes[0]) {
-            return rates[0][0];
-        }
-
-        // Iterate through the change times to find the correct interval
-        for (int i = 0; i < rateChangeTimes.length - 1; i++) {
-            if (time >= rateChangeTimes[i] && time < rateChangeTimes[i + 1]) {
-                return rates[0][i];
-            }
-        }
-//        int index = parameterization.getIntervalIndex(time);
-//        return rates[0][index];
-
-        // If the time is after the last change time, return the last rate
-        return rates[0][rateChangeTimes.length - 1];
-    }
-
-
-
     // Equation 2 from Bokma,Folmer,van den Brink, Valentijn, Stadler, Tanja. "Unexpectedly many extinct hominins."
     // Evolution, Volume 66, Issue 9, 1 September 2012, Pages 2969–2974. https://doi.org/10.1111/j.1558-5646.2012.01660.x
-    public double getExpNrHiddenEventsForInterval(double[][] birthRates, double[][] deathRates,
-                                                  double[][] samplingRates, double[][] rhoValues,
-                                                  double t0, double t1) {
+    public double getExpNrHiddenEventsForInterval(double t0, double t1) {
+        /*
+        Should getIntervalIndex use t0 or t1?
+        */
+        int index = parameterization.getIntervalIndex(t0);
 
-        double mu = getRate(birthRates, birthRateChangeTimes, t1);
-        double lambda = getRate(deathRates, deathRateChangeTimes, t1);
-        double psi = getRate(samplingRates, samplingRateChangeTimes, t1);
-        double rho = getRate(rhoValues, rhoSamplingTimes, t1);
+        double mu = birthRates[index][0];
+        double lambda = deathRates[index][0];
+        double psi = samplingRates[index][0];
+        double rho = rhoValues[index][0];
 
 
         double c1 = getC1(lambda, mu, psi, rho);
@@ -183,31 +121,15 @@ public class BranchSpikePrior extends Distribution {
         double f = ((c2 - 1) * Math.exp(-c1 * t1) - c2 - 1) / ((c2 - 1) * Math.exp(-c1 * t0) - c2 - 1);
 
         return (t0 - t1) * (lambda + mu + psi - c1) + 2 * Math.log(f);
-
     }
 
 
-    public double getExpNrHiddenEventsForBranch(double branchStartTime, double branchEndTime) {
-//            double[] timeIntervals, double[][] birthRates,
-//                                                double[][] deathRates, double[][] samplingRates, double[][] rhoValues,
-
-        birthRates = parameterization.getBirthRates();
-        deathRates = parameterization.getDeathRates();
-        samplingRates = parameterization.getSamplingRates();
-        rhoValues= parameterization.getRhoValues();
-
-        birthRateChangeTimes = parameterization.getBirthRateChangeTimes();
-        deathRateChangeTimes = parameterization.getDeathRateChangeTimes();
-        samplingRateChangeTimes = parameterization.getSamplingRateChangeTimes();
-        rhoSamplingTimes = parameterization.getRhoSamplingTimes();
-
-        double[] timeIntervals = combineAndSortTimes(birthRateChangeTimes,
-                deathRateChangeTimes, samplingRateChangeTimes, rhoSamplingTimes);
+    public double getExpNrHiddenEventsForBranch(double[] intervalEndTimes, double branchStartTime, double branchEndTime) {
 
         double ExpNrHiddenEvents = 0;
-        for (int i = 0; i < timeIntervals.length - 1; i++) {
-            double t0 = timeIntervals[i];
-            double t1 = timeIntervals[i + 1];
+        for (int i = 0; i < intervalEndTimes.length - 1; i++) {
+            double t0 = intervalEndTimes[i];
+            double t1 = intervalEndTimes[i + 1];
 
             // Check if the interval is within the branch time span
             if (t1 <= branchStartTime || t0 >= branchEndTime) {
@@ -215,11 +137,10 @@ public class BranchSpikePrior extends Distribution {
             }
 
             // Adjust the interval to fit within the branch time span
-            double intervalStart = Math.max(t0, branchStartTime);
-            double intervalEnd = Math.min(t1, branchEndTime);
+            t0 = Math.max(t0, branchStartTime);
+            t1 = Math.min(t1, branchEndTime);
 
-            ExpNrHiddenEvents += getExpNrHiddenEventsForInterval(birthRates, deathRates, samplingRates, rhoValues,
-                    intervalStart, intervalEnd);
+            ExpNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
         }
         return ExpNrHiddenEvents;
     }
@@ -228,7 +149,6 @@ public class BranchSpikePrior extends Distribution {
     // If there are too many stubs on a branch (eg. during mixing) then the gamma distribution shape is large, which causes
     // instabilities
     final double MAX_CUM_SUM = 0.999;
-
 
     public double calculateLogP() {
         logP = 0;
@@ -243,7 +163,8 @@ public class BranchSpikePrior extends Distribution {
             Node node = treeInput.get().getNode(nodeNr);
             double branchStartTime = node.getHeight();
             double branchEndTime = node.isRoot() ? branchStartTime : node.getParent().getHeight();
-            double ExpNrHiddenEvents = getExpNrHiddenEventsForBranch(branchStartTime, branchEndTime);
+            double[] intervalEndTimes = parameterization.getIntervalEndTimes();
+            double ExpNrHiddenEvents = getExpNrHiddenEventsForBranch(intervalEndTimes, branchStartTime, branchEndTime);
 
             if (ExpNrHiddenEvents > 0) {
 
@@ -286,7 +207,6 @@ public class BranchSpikePrior extends Distribution {
                 logP = Double.NEGATIVE_INFINITY;
             }
 
-
         }
         return logP;
     }
@@ -322,6 +242,8 @@ public class BranchSpikePrior extends Distribution {
     }
 
 }
+
+
 
 //	public static void main(String[] args) {
 //		String newick = "((0:1.0,1:1.0)4:1.0,(2:1.0,3:1.0)5:0.5)6:0.0;";
