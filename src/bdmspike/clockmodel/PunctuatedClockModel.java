@@ -104,6 +104,4 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         return ratesArray;
     }
 
-
-
 }

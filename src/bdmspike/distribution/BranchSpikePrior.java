@@ -5,6 +5,7 @@ import beast.base.core.Description;
 import beast.base.core.Input;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
+import beast.base.evolution.tree.TreeParser;
 import beast.base.inference.Distribution;
 import beast.base.inference.State;
 import beast.base.inference.parameter.BooleanParameter;
@@ -26,14 +27,13 @@ public class BranchSpikePrior extends Distribution {
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
     final public Input<RealParameter> gammaShapeInput = new Input<>("gammaShape", "shape hyper-parameter for the " +
             "gamma spike distribution.", Input.Validate.REQUIRED);
-    final public Input<RealParameter> spikesInput = new Input<>("spikes", "one spike size per branch.",
+    final public Input<RealParameter> spikeInput = new Input<>("spike", "one spike size per branch.",
             Input.Validate.REQUIRED);
 
     final public Input<BooleanParameter> indicatorInput = new Input<>("indicator",
             "Indicator for presence/absence of a spike", Input.Validate.OPTIONAL);
 
-
-    public final Parameterization parameterization = parameterizationInput.get();
+    public Parameterization parameterization;
     int nTypes;
     double[] birthRateChangeTimes, deathRateChangeTimes, samplingRateChangeTimes, rhoSamplingTimes, intervalEndTimes;
     double[][] birthRates, deathRates, samplingRates, rhoValues;
@@ -42,9 +42,11 @@ public class BranchSpikePrior extends Distribution {
 
     @Override
     public void initAndValidate() {
+        parameterization = parameterizationInput.get();
         nTypes = parameterization.getNTypes();
-        if (nTypes != 1)
+        if (nTypes != 1) {
             throw new RuntimeException("Error: Not implemented for models with >1 type yet.");
+        }
 
         birthRateChangeTimes = parameterization.getBirthRateChangeTimes();
         deathRateChangeTimes = parameterization.getDeathRateChangeTimes();
@@ -106,9 +108,6 @@ public class BranchSpikePrior extends Distribution {
     // Equation 2 from Bokma,Folmer,van den Brink, Valentijn, Stadler, Tanja. "Unexpectedly many extinct hominins."
     // Evolution, Volume 66, Issue 9, 1 September 2012, Pages 2969–2974. https://doi.org/10.1111/j.1558-5646.2012.01660.x
     public double getExpNrHiddenEventsForInterval(double t0, double t1) {
-        /*
-        Should getIntervalIndex use t0 or t1?
-        */
         int index = parameterization.getIntervalIndex(t0);
 
         double mu = birthRates[index][0];
@@ -119,29 +118,33 @@ public class BranchSpikePrior extends Distribution {
 
         double c1 = getC1(lambda, mu, psi, rho);
         double c2 = getC2(lambda, mu, psi, rho);
-        double f = ((c2 - 1) * Math.exp(-c1 * t1) - c2 - 1) / ((c2 - 1) * Math.exp(-c1 * t0) - c2 - 1);
+        double f = ((c2 - 1) * Math.exp(-c1 * t0) - c2 - 1) / ((c2 - 1) * Math.exp(-c1 * t1) - c2 - 1);
 
-        return (t0 - t1) * (lambda + mu + psi - c1) + 2 * Math.log(f);
+        return (t1 - t0) * (lambda + mu + psi - c1) + 2 * Math.log(f);
     }
 
 
     public double getExpNrHiddenEventsForBranch(double branchStartTime, double branchEndTime) {
 
-        double ExpNrHiddenEvents = 0;
-        for (int i = 0; i < intervalEndTimes.length - 1; i++) {
-            double t0 = intervalEndTimes[i];
-            double t1 = intervalEndTimes[i + 1];
+        double ExpNrHiddenEvents = 0.0;
+        if(intervalEndTimes.length==1){
+            ExpNrHiddenEvents = getExpNrHiddenEventsForInterval(branchStartTime, branchEndTime);
+        } else {
+            for (int i = 0; i < intervalEndTimes.length - 1; i++) {
+                double t0 = intervalEndTimes[i];
+                double t1 = intervalEndTimes[i + 1];
 
-            // Check if the interval is within the branch time span
-            if (t1 <= branchStartTime || t0 >= branchEndTime) {
-                continue; // Skip intervals outside the branch time span
+                // Check if the interval is within the branch time span
+                if (t1 <= branchStartTime || t0 >= branchEndTime) {
+                    continue; // Skip intervals outside the branch time span
+                }
+
+                // Adjust the interval to fit within the branch time span
+                t0 = Math.max(t0, branchStartTime);
+                t1 = Math.min(t1, branchEndTime);
+
+                ExpNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
             }
-
-            // Adjust the interval to fit within the branch time span
-            t0 = Math.max(t0, branchStartTime);
-            t1 = Math.min(t1, branchEndTime);
-
-            ExpNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
         }
         return ExpNrHiddenEvents;
     }
@@ -158,7 +161,7 @@ public class BranchSpikePrior extends Distribution {
         // Gamma(alpha, beta) distribution, integrating across all possible numbers of hidden speciation events.
         for (int nodeNr = 0; nodeNr < treeInput.get().getNodeCount(); nodeNr++) {
 
-            double branchSpike = spikesInput.get().getValue(nodeNr);
+            double branchSpike = spikeInput.get().getValue(nodeNr);
 
             // Integrate over all possible spike amplitude values
             Node node = treeInput.get().getNode(nodeNr);
@@ -214,7 +217,7 @@ public class BranchSpikePrior extends Distribution {
     @Override
     public List<String> getArguments() {
         List<String> args = new ArrayList<>();
-        args.add(spikesInput.get().getID());
+        args.add(spikeInput.get().getID());
         return args;
     }
 
@@ -230,27 +233,88 @@ public class BranchSpikePrior extends Distribution {
     }
 
     @Override
-    public double[] sample(State state, Random random) {
-        return new double[0];
+    public void sample(State state, Random random) {
     }
 
     @Override
     protected boolean requiresRecalculation() {
         return super.requiresRecalculation() ||
-                InputUtil.isDirty(spikesInput) ||
+                InputUtil.isDirty(spikeInput) ||
                 InputUtil.isDirty(gammaShapeInput);
     }
 
+    /*Testing*/
+    public static void main(String[] args) {
+     String newick = "((0:1.0,1:1.0)4:1.0,(2:1.0,3:1.0)5:0.5)6:0.0;";
+        TreeParser treeParser = new TreeParser(newick, false, false, false, 0);
+        Tree myTree = treeParser;
+        Node[] node = myTree.getNodesAsArray();
+
+        RealParameter originParam = new RealParameter("2.0");
+
+        Parameterization parameterization = new CanonicalParameterization();
+        parameterization.initByName(
+                "typeSet", new TypeSet(1),
+                "processLength", originParam,
+                "birthRate", new SkylineVectorParameter(
+                        new RealParameter("0.1"),
+                        new RealParameter("4.0 5.0"), 1),
+                "deathRate", new SkylineVectorParameter(
+                        new RealParameter("0.1"),
+                        new RealParameter("3.0 2.0"), 1),
+                "samplingRate", new SkylineVectorParameter(
+                        new RealParameter("0.1"),
+                        new RealParameter("1.5 2.5"), 1),
+                "removalProb", new SkylineVectorParameter(
+                        new RealParameter("0.1"),
+                        new RealParameter("1.0 3.0"), 1),
+                "rhoSampling", new TimedParameter(
+                        originParam,
+                        new RealParameter("0.0")));
+//        parameterization.initByName(
+//                "typeSet", new TypeSet(1),
+//                "processLength", originParam,
+//                "birthRate", new SkylineVectorParameter(
+//                        null,
+//                        new RealParameter("4.0"), 1),
+//                "deathRate", new SkylineVectorParameter(
+//                        null,
+//                        new RealParameter("3.0"), 1),
+//                "samplingRate", new SkylineVectorParameter(
+//                        null,
+//                        new RealParameter("1.5"), 1),
+//                "removalProb", new SkylineVectorParameter(
+//                        null,
+//                        new RealParameter("1.0"), 1),
+//                "rhoSampling", new TimedParameter(
+//                        originParam,
+//                        new RealParameter("0.0"))
+//        );
+
+        int nTypes;
+        double[] birthRateChangeTimes, deathRateChangeTimes, samplingRateChangeTimes, rhoSamplingTimes, intervalEndTimes;
+        double[][] birthRates, deathRates, samplingRates, rhoValues;
+
+        birthRateChangeTimes = parameterization.getBirthRateChangeTimes();
+        deathRateChangeTimes = parameterization.getDeathRateChangeTimes();
+        samplingRateChangeTimes = parameterization.getSamplingRateChangeTimes();
+        rhoSamplingTimes = parameterization.getRhoSamplingTimes();
+        birthRates = parameterization.getBirthRates();
+        deathRates = parameterization.getDeathRates();
+        samplingRates = parameterization.getSamplingRates();
+        rhoValues = parameterization.getRhoValues();
+        intervalEndTimes = parameterization.getIntervalEndTimes();
+
+
+        //System.out.println(parameterization.getNTypes());
+        BranchSpikePrior bsp = new BranchSpikePrior();
+        bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "1.0", "spike", "1.0");
+        System.out.println(bsp.getExpNrHiddenEventsForInterval(1, 2));
+        System.out.println(bsp.getExpNrHiddenEventsForBranch(1, 2));
+
+        System.out.println(Arrays.toString(parameterization.getIntervalEndTimes()));
+    }
+
+
 }
-
-
-
-//	public static void main(String[] args) {
-//		String newick = "((0:1.0,1:1.0)4:1.0,(2:1.0,3:1.0)5:0.5)6:0.0;";
-//		TreeParser treeParser = new TreeParser(newick, false, false, false, 0);
-//		Tree myTree = treeParser;
-//		Node[] node = myTree.getNodesAsArray();
-//
-//	}
-//}
 
