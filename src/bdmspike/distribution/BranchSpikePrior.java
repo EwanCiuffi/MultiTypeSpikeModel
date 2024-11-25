@@ -26,12 +26,12 @@ public class BranchSpikePrior extends Distribution {
             Input.Validate.REQUIRED);
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
     final public Input<RealParameter> gammaShapeInput = new Input<>("gammaShape", "shape hyper-parameter for the " +
-            "gamma spike distribution.", Input.Validate.REQUIRED);
-    final public Input<RealParameter> spikeInput = new Input<>("spike", "one spike size per branch.",
+            "gamma distribution of the spikes", Input.Validate.REQUIRED);
+    final public Input<RealParameter> spikesInput = new Input<>("spikes", "vector of spike amplitudes for each branch",
             Input.Validate.REQUIRED);
 
     final public Input<BooleanParameter> indicatorInput = new Input<>("indicator",
-            "Indicator for presence/absence of a spike", Input.Validate.OPTIONAL);
+            "indicator for presence/absence of a spike", Input.Validate.OPTIONAL);
 
     public Parameterization parameterization;
     int nTypes;
@@ -58,6 +58,10 @@ public class BranchSpikePrior extends Distribution {
         rhoValues = parameterization.getRhoValues();
         gammaShape = gammaShapeInput.get();
         intervalEndTimes = parameterization.getIntervalEndTimes();
+
+        if (spikesInput.get().getDimension() != treeInput.get().getInternalNodeCount() ){
+            throw new RuntimeException("Error: Dimension of spikesInput does not match the number of internal nodes");
+        }
     }
 
 
@@ -127,30 +131,38 @@ public class BranchSpikePrior extends Distribution {
     public double getExpNrHiddenEventsForBranch(double branchStartTime, double branchEndTime) {
 
         double ExpNrHiddenEvents = 0.0;
-        if(intervalEndTimes.length==1){
-            ExpNrHiddenEvents = getExpNrHiddenEventsForInterval(branchStartTime, branchEndTime);
-        } else {
-            for (int i = 0; i < intervalEndTimes.length - 1; i++) {
-                double t0 = intervalEndTimes[i];
-                double t1 = intervalEndTimes[i + 1];
 
-                // Check if the interval is within the branch time span
-                if (t1 <= branchStartTime || t0 >= branchEndTime) {
-                    continue; // Skip intervals outside the branch time span
-                }
-
-                // Adjust the interval to fit within the branch time span
+        // Handle the first interval separately if needed, (due to intervalEndTimes not starting at 0)
+        if (intervalEndTimes[0] > branchStartTime) {
+            double t0 = branchStartTime;
+            double t1 = intervalEndTimes[0];
+            if (t1 > branchStartTime && t0 < branchEndTime) {
                 t0 = Math.max(t0, branchStartTime);
                 t1 = Math.min(t1, branchEndTime);
-
                 ExpNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
             }
+        }
+        // Loop through the rest of the intervals
+        for (int i = 0; i < intervalEndTimes.length - 1; i++) {
+            double t0 = intervalEndTimes[i];
+            double t1 = intervalEndTimes[i + 1];
+
+            // Check if the interval is within the branch time span
+            if (t1 <= branchStartTime || t0 >= branchEndTime) {
+                continue; // Skip intervals outside the branch time span
+            }
+
+            // Adjust the interval to fit within the branch time span
+            t0 = Math.max(t0, branchStartTime);
+            t1 = Math.min(t1, branchEndTime);
+
+            ExpNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
         }
         return ExpNrHiddenEvents;
     }
 
 
-    // If there are too many stubs on a branch (eg. during mixing) then the gamma distribution shape is large, which causes
+    // If there are too many hidden events on a branch (e.g. during mixing) then the gamma distribution shape is large, which causes
     // instabilities
     final double MAX_CUM_SUM = 0.999;
 
@@ -159,9 +171,9 @@ public class BranchSpikePrior extends Distribution {
 
         // Calculate density of the spike size of each branch, assuming that each spike is drawn from a
         // Gamma(alpha, beta) distribution, integrating across all possible numbers of hidden speciation events.
-        for (int nodeNr = 0; nodeNr < treeInput.get().getNodeCount(); nodeNr++) {
+        for (int nodeNr = 0; nodeNr < treeInput.get().getInternalNodeCount(); nodeNr++) {
 
-            double branchSpike = spikeInput.get().getValue(nodeNr);
+            double branchSpike = spikesInput.get().getValue(nodeNr);
 
             // Integrate over all possible spike amplitude values
             Node node = treeInput.get().getNode(nodeNr);
@@ -217,7 +229,7 @@ public class BranchSpikePrior extends Distribution {
     @Override
     public List<String> getArguments() {
         List<String> args = new ArrayList<>();
-        args.add(spikeInput.get().getID());
+        args.add(spikesInput.get().getID());
         return args;
     }
 
@@ -239,7 +251,7 @@ public class BranchSpikePrior extends Distribution {
     @Override
     protected boolean requiresRecalculation() {
         return super.requiresRecalculation() ||
-                InputUtil.isDirty(spikeInput) ||
+                InputUtil.isDirty(spikesInput) ||
                 InputUtil.isDirty(gammaShapeInput);
     }
 
@@ -248,7 +260,7 @@ public class BranchSpikePrior extends Distribution {
      String newick = "((0:1.0,1:1.0)4:1.0,(2:1.0,3:1.0)5:0.5)6:0.0;";
         TreeParser treeParser = new TreeParser(newick, false, false, false, 0);
         Tree myTree = treeParser;
-        Node[] node = myTree.getNodesAsArray();
+        //Node[] node = myTree.getNodesAsArray();
 
         RealParameter originParam = new RealParameter("2.0");
 
@@ -257,16 +269,16 @@ public class BranchSpikePrior extends Distribution {
                 "typeSet", new TypeSet(1),
                 "processLength", originParam,
                 "birthRate", new SkylineVectorParameter(
-                        new RealParameter("0.1"),
+                        new RealParameter("0.25"),
                         new RealParameter("4.0 5.0"), 1),
                 "deathRate", new SkylineVectorParameter(
-                        new RealParameter("0.1"),
+                        new RealParameter("0.5"),
                         new RealParameter("3.0 2.0"), 1),
                 "samplingRate", new SkylineVectorParameter(
-                        new RealParameter("0.1"),
+                        new RealParameter("1.0"),
                         new RealParameter("1.5 2.5"), 1),
                 "removalProb", new SkylineVectorParameter(
-                        new RealParameter("0.1"),
+                        new RealParameter("1.5"),
                         new RealParameter("1.0 3.0"), 1),
                 "rhoSampling", new TimedParameter(
                         originParam,
@@ -291,30 +303,37 @@ public class BranchSpikePrior extends Distribution {
 //                        new RealParameter("0.0"))
 //        );
 
-        int nTypes;
-        double[] birthRateChangeTimes, deathRateChangeTimes, samplingRateChangeTimes, rhoSamplingTimes, intervalEndTimes;
-        double[][] birthRates, deathRates, samplingRates, rhoValues;
+//        int nTypes;
+//        double[] birthRateChangeTimes, deathRateChangeTimes, samplingRateChangeTimes, rhoSamplingTimes, intervalEndTimes;
+//        double[][] birthRates, deathRates, samplingRates, rhoValues;
 
-        birthRateChangeTimes = parameterization.getBirthRateChangeTimes();
-        deathRateChangeTimes = parameterization.getDeathRateChangeTimes();
-        samplingRateChangeTimes = parameterization.getSamplingRateChangeTimes();
-        rhoSamplingTimes = parameterization.getRhoSamplingTimes();
-        birthRates = parameterization.getBirthRates();
-        deathRates = parameterization.getDeathRates();
-        samplingRates = parameterization.getSamplingRates();
-        rhoValues = parameterization.getRhoValues();
-        intervalEndTimes = parameterization.getIntervalEndTimes();
+//        birthRateChangeTimes = parameterization.getBirthRateChangeTimes();
+//        deathRateChangeTimes = parameterization.getDeathRateChangeTimes();
+//        samplingRateChangeTimes = parameterization.getSamplingRateChangeTimes();
+//        rhoSamplingTimes = parameterization.getRhoSamplingTimes();
+//        birthRates = parameterization.getBirthRates();
+//        deathRates = parameterization.getDeathRates();
+//        samplingRates = parameterization.getSamplingRates();
+//        rhoValues = parameterization.getRhoValues();
+//        intervalEndTimes = parameterization.getIntervalEndTimes();
 
 
         //System.out.println(parameterization.getNTypes());
         BranchSpikePrior bsp = new BranchSpikePrior();
-        bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "1.0", "spike", "1.0");
-        System.out.println(bsp.getExpNrHiddenEventsForInterval(1, 2));
-        System.out.println(bsp.getExpNrHiddenEventsForBranch(1, 2));
+        bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "1.0", "spikes", "1.0 1.0 1.0");
+//        System.out.println(bsp.getExpNrHiddenEventsForInterval(0.4, 0.5) + bsp.getExpNrHiddenEventsForInterval(0.5, 1.0)
+//                + bsp.getExpNrHiddenEventsForInterval(1.0, 1.5) + bsp.getExpNrHiddenEventsForInterval(1.5, 1.79)
+//        );
+        Node node = myTree.getNode(2);
+        System.out.println(myTree.getInternalNodeCount());
+        //System.out.println(node.getHeight() + "," + node.getParent().getHeight());
 
-        System.out.println(Arrays.toString(parameterization.getIntervalEndTimes()));
+        //System.out.println(bsp.getExpNrHiddenEventsForBranch(node.getHeight(), node.getParent().getHeight()));
+
+        System.out.println(bsp.calculateLogP());
+        //System.out.println(Arrays.toString(parameterization.getIntervalEndTimes()));
+
     }
-
 
 }
 
