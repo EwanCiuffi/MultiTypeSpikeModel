@@ -1,5 +1,5 @@
 <package name='BDMSpike' version='0.0.1'>
-	<depends on='BEAST.base' atleast='2.7.5'/>
+    <depends on='BEAST.base' atleast='2.7.5'/>
     <depends on='SA' atleast='2.1.1'/>
     <depends on='BDMM-Prime' version='2.2.2'/>
 

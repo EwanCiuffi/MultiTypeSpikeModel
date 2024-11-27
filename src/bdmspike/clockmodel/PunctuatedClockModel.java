@@ -9,6 +9,7 @@ import beast.base.inference.parameter.BooleanParameter;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
 
+// Based on <GammaSpikeModel>  Copyright (C) <2024>  <Jordan Douglas>
 
 
 public class PunctuatedClockModel extends BranchRateModel.Base {

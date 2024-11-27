@@ -2,6 +2,7 @@ package bdmspike.distribution;
 
 import bdmmprime.parameterization.*;
 import beast.base.core.Description;
+import beast.base.core.Function;
 import beast.base.core.Input;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
@@ -16,26 +17,32 @@ import org.apache.commons.math.distribution.GammaDistributionImpl;
 
 import java.util.*;
 
-// Elements borrowed from <GammaSpikeModel>  Copyright (C) <2024>  <Jordan Douglas>
+// Based on <GammaSpikeModel>  Copyright (C) <2024>  <Jordan Douglas>
 
 @Description("Prior distribution on the spike size of a branch, " +
         "dependent on the number of hidden events along that branch")
 public class BranchSpikePrior extends Distribution {
     public Input<Parameterization> parameterizationInput = new Input<>("parameterization",
-            "BDMM parameterization",
+            "BDMM-prime parameterization object (see BDMM-prime package for available parameterizations)",
             Input.Validate.REQUIRED);
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
     final public Input<RealParameter> gammaShapeInput = new Input<>("gammaShape", "shape hyper-parameter for the " +
             "gamma distribution of the spikes", Input.Validate.REQUIRED);
     final public Input<RealParameter> spikesInput = new Input<>("spikes", "vector of spike amplitudes for each branch",
             Input.Validate.REQUIRED);
+    public Input<Function> finalSampleOffsetInput = new Input<>("finalSampleOffset",
+            "If provided, the difference in time between the final sample and the end of the BD process.",
+            new RealParameter("0.0"));
 
+//  For model selection: to be implemented.
     final public Input<BooleanParameter> indicatorInput = new Input<>("indicator",
-            "indicator for presence/absence of a spike", Input.Validate.OPTIONAL);
+            "indicator for presence/absence of spikes", Input.Validate.OPTIONAL);
+
 
     public Parameterization parameterization;
     int nTypes;
-    double[] birthRateChangeTimes, deathRateChangeTimes, samplingRateChangeTimes, rhoSamplingTimes, intervalEndTimes;
+    double finalSampleOffset;
+    double[] intervalEndTimes;
     double[][] birthRates, deathRates, samplingRates, rhoValues;
 
     RealParameter gammaShape;
@@ -45,19 +52,16 @@ public class BranchSpikePrior extends Distribution {
         parameterization = parameterizationInput.get();
         nTypes = parameterization.getNTypes();
         if (nTypes != 1) {
-            throw new RuntimeException("Error: Not implemented for models with >1 type yet.");
+            throw new RuntimeException("Error: Not implemented for models with >1 type yet");
         }
 
-        birthRateChangeTimes = parameterization.getBirthRateChangeTimes();
-        deathRateChangeTimes = parameterization.getDeathRateChangeTimes();
-        samplingRateChangeTimes = parameterization.getSamplingRateChangeTimes();
-        rhoSamplingTimes = parameterization.getRhoSamplingTimes();
         birthRates = parameterization.getBirthRates();
         deathRates = parameterization.getDeathRates();
         samplingRates = parameterization.getSamplingRates();
         rhoValues = parameterization.getRhoValues();
         gammaShape = gammaShapeInput.get();
         intervalEndTimes = parameterization.getIntervalEndTimes();
+        finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
 
         if (spikesInput.get().getDimension() != treeInput.get().getInternalNodeCount() ){
             throw new RuntimeException("Error: Dimension of spikesInput does not match the number of internal nodes");
@@ -66,99 +70,61 @@ public class BranchSpikePrior extends Distribution {
 
 
     // Calculate the expected number of hidden events along a branch within a given time interval
-    private double getC1(double lambda, double mu, double psi, double rho) {
+    private double getC1(double lambda, double mu, double psi) {
         return Math.sqrt(Math.abs(Math.pow(lambda - mu - psi, 2) + 4 * lambda * psi));
     }
 
     private double getC2(double lambda, double mu, double psi, double rho) {
-        double c1 = getC1(lambda, mu, psi, rho);
+        double c1 = getC1(lambda, mu, psi);
         return -(lambda - mu - 2 * lambda * rho - psi) / c1;
     }
 
-    // Equation 1 from
-    // Stadler, Tanja. "Sampling-through-time in birth–death trees."
-    // Journal of theoretical biology 267.3 (2010): 396-404.
-    private double getP0(double height, double lambda, double mu, double psi, double rho,
-                         double c1, double c2) throws Exception {
-        double a = lambda + mu + psi;
-        double exp = Math.exp(-c1 * height) * (1 - c2);
-        double b = 1 + c2;
-        double top = a + c1 * (exp - b) / (exp + b);
-        double bottom = 2 * lambda;
-        double result = top / bottom;
-        if (Double.isNaN(result) || result <= 0) {
-            //Log.warning("c1=" + c1 + " c2=" + c2 + " lambda =" + lambda + " mu=" + mu + " psi=" + psi);
-            throw new Exception("Numerical error: p0 is non-positive " + top + "/" + bottom + "=" + result);
-        }
-        return result;
-    }
 
     // Equation 2 from
-    // Stadler, Tanja. "Sampling-through-time in birth–death trees."
-    // Journal of theoretical biology 267.3 (2010): 396-404.
-    private double getP1(double height, double lambda, double mu, double psi, double rho,
-                         double c1, double c2) throws Exception {
-        double top = 4 * rho;
-        double bottom = 2 * (1 - c2 * c2) + Math.exp(-c1 * height) * (1 - c2) * (1 - c2) + Math.exp(c1 * height) * (1 + c2) * (1 + c2);
-        double result = top / bottom;
-        if (Double.isNaN(result) || result <= 0) {
-            //Log.warning("c1=" + c1 + " c2=" + c2 + " lambda =" + lambda + " mu=" + mu + " psi=" + psi);
-            throw new Exception("Numerical error: p1 is non-positive " + top + "/" + bottom + "=" + result);
-        }
-        return result;
-    }
-
-
-    // Equation 2 from Bokma,Folmer,van den Brink, Valentijn, Stadler, Tanja. "Unexpectedly many extinct hominins."
+    // Bokma,Folmer,van den Brink, Valentijn, Stadler, Tanja. "Unexpectedly many extinct hominins."
     // Evolution, Volume 66, Issue 9, 1 September 2012, Pages 2969–2974. https://doi.org/10.1111/j.1558-5646.2012.01660.x
     public double getExpNrHiddenEventsForInterval(double t0, double t1) {
-        int index = parameterization.getIntervalIndex(t0);
-
-        double mu = birthRates[index][0];
-        double lambda = deathRates[index][0];
+        int index = parameterization.getIntervalIndex(t1);
+        // Get rates for interval
+        double lambda = birthRates[index][0];
+        double mu = deathRates[index][0];
         double psi = samplingRates[index][0];
         double rho = rhoValues[index][0];
 
-
-        double c1 = getC1(lambda, mu, psi, rho);
+        // Calculate expected number of hidden events for interval
+        double c1 = getC1(lambda, mu, psi);
         double c2 = getC2(lambda, mu, psi, rho);
-        double f = ((c2 - 1) * Math.exp(-c1 * t0) - c2 - 1) / ((c2 - 1) * Math.exp(-c1 * t1) - c2 - 1);
+        double f = ((c2 - 1) * Math.exp(-c1 * t1) - c2 - 1) / ((c2 - 1) * Math.exp(-c1 * t0) - c2 - 1);
 
-        return (t1 - t0) * (lambda + mu + psi - c1) + 2 * Math.log(f);
+        return (t0 - t1) * (lambda + mu + psi - c1) + 2 * Math.log(f);
     }
 
 
-    public double getExpNrHiddenEventsForBranch(double branchStartTime, double branchEndTime) {
+    public double getExpNrHiddenEventsForBranch(Node node) {
 
-        double ExpNrHiddenEvents = 0.0;
+        // Calculate the expected number of hidden events for the first interval
+        double t0 = parameterization.getNodeTime(node, finalSampleOffset);
+        int nodeIndex = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
+        double t1 = intervalEndTimes[nodeIndex];
+        int parentIndex = parameterization.getNodeIntervalIndex(node.getParent(), finalSampleOffset);
 
-        // Handle the first interval separately if needed, (due to intervalEndTimes not starting at 0)
-        if (intervalEndTimes[0] > branchStartTime) {
-            double t0 = branchStartTime;
-            double t1 = intervalEndTimes[0];
-            if (t1 > branchStartTime && t0 < branchEndTime) {
-                t0 = Math.max(t0, branchStartTime);
-                t1 = Math.min(t1, branchEndTime);
-                ExpNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
-            }
+        double expNrHiddenEvents = getExpNrHiddenEventsForInterval(t0, t1);
+
+        // Loop through the intervals between the node and its parent
+        for (int i = nodeIndex; i < parentIndex - 1; i++) {
+            t0 = intervalEndTimes[i];
+            t1 = intervalEndTimes[i + 1];
+
+            expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
         }
-        // Loop through the rest of the intervals
-        for (int i = 0; i < intervalEndTimes.length - 1; i++) {
-            double t0 = intervalEndTimes[i];
-            double t1 = intervalEndTimes[i + 1];
 
-            // Check if the interval is within the branch time span
-            if (t1 <= branchStartTime || t0 >= branchEndTime) {
-                continue; // Skip intervals outside the branch time span
-            }
+        // Calculate the expected number of hidden events for the last interval
+        t0 = intervalEndTimes[parentIndex];
+        t1  = parameterization.getNodeTime(node.getParent(), finalSampleOffset);
 
-            // Adjust the interval to fit within the branch time span
-            t0 = Math.max(t0, branchStartTime);
-            t1 = Math.min(t1, branchEndTime);
+        expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
 
-            ExpNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
-        }
-        return ExpNrHiddenEvents;
+        return expNrHiddenEvents;
     }
 
 
@@ -177,11 +143,9 @@ public class BranchSpikePrior extends Distribution {
 
             // Integrate over all possible spike amplitude values
             Node node = treeInput.get().getNode(nodeNr);
-            double branchStartTime = node.getHeight();
-            double branchEndTime = node.isRoot() ? branchStartTime : node.getParent().getHeight();
-            double ExpNrHiddenEvents = getExpNrHiddenEventsForBranch(branchStartTime, branchEndTime);
+            double expNrHiddenEvents = getExpNrHiddenEventsForBranch(node);
 
-            if (ExpNrHiddenEvents > 0) {
+            if (expNrHiddenEvents > 0) {
 
                 double branchP = 0;
                 int k = 0;
@@ -190,7 +154,7 @@ public class BranchSpikePrior extends Distribution {
 
                     // Probability of observing k hidden events P(k) under a Poisson(mu),
                     // where mu = Expected number of hidden events
-                    double logpk = -ExpNrHiddenEvents + k * Math.log(ExpNrHiddenEvents);
+                    double logpk = -expNrHiddenEvents + k * Math.log(expNrHiddenEvents);
                     for (int i = 2; i <= k; i++) logpk -= Math.log(i); // - log(k!)
 
                     double pk = Math.exp(logpk);
@@ -236,7 +200,6 @@ public class BranchSpikePrior extends Distribution {
     @Override
     public List<String> getConditions() {
         List<String> conds = new ArrayList<>();
-        //conds.add(meanInput.get().getID());
         conds.add(gammaShapeInput.get().getID());
         if (treeInput.get() != null) conds.add(treeInput.get().getID());
         if (parameterizationInput.get() != null) conds.add(parameterizationInput.get().getID());
@@ -254,6 +217,7 @@ public class BranchSpikePrior extends Distribution {
                 InputUtil.isDirty(spikesInput) ||
                 InputUtil.isDirty(gammaShapeInput);
     }
+
 
     /*Testing*/
     public static void main(String[] args) {
@@ -303,35 +267,19 @@ public class BranchSpikePrior extends Distribution {
 //                        new RealParameter("0.0"))
 //        );
 
-//        int nTypes;
-//        double[] birthRateChangeTimes, deathRateChangeTimes, samplingRateChangeTimes, rhoSamplingTimes, intervalEndTimes;
-//        double[][] birthRates, deathRates, samplingRates, rhoValues;
-
-//        birthRateChangeTimes = parameterization.getBirthRateChangeTimes();
-//        deathRateChangeTimes = parameterization.getDeathRateChangeTimes();
-//        samplingRateChangeTimes = parameterization.getSamplingRateChangeTimes();
-//        rhoSamplingTimes = parameterization.getRhoSamplingTimes();
-//        birthRates = parameterization.getBirthRates();
-//        deathRates = parameterization.getDeathRates();
-//        samplingRates = parameterization.getSamplingRates();
-//        rhoValues = parameterization.getRhoValues();
-//        intervalEndTimes = parameterization.getIntervalEndTimes();
-
-
         //System.out.println(parameterization.getNTypes());
         BranchSpikePrior bsp = new BranchSpikePrior();
-        bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "1.0", "spikes", "1.0 1.0 1.0");
+        bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "1.0", "spikes", "1.0 0.5 0.1");
 //        System.out.println(bsp.getExpNrHiddenEventsForInterval(0.4, 0.5) + bsp.getExpNrHiddenEventsForInterval(0.5, 1.0)
 //                + bsp.getExpNrHiddenEventsForInterval(1.0, 1.5) + bsp.getExpNrHiddenEventsForInterval(1.5, 1.79)
 //        );
-        Node node = myTree.getNode(2);
-        System.out.println(myTree.getInternalNodeCount());
-        //System.out.println(node.getHeight() + "," + node.getParent().getHeight());
+        Node node = myTree.getNode(5);
+        System.out.println(bsp.getExpNrHiddenEventsForBranch(node));
 
-        //System.out.println(bsp.getExpNrHiddenEventsForBranch(node.getHeight(), node.getParent().getHeight()));
-
-        System.out.println(bsp.calculateLogP());
-        //System.out.println(Arrays.toString(parameterization.getIntervalEndTimes()));
+        double[] intervalEndTimes = parameterization.getIntervalEndTimes();
+        System.out.println(parameterization.getNodeIntervalIndex(node, 0));
+        System.out.println(intervalEndTimes[parameterization.getNodeIntervalIndex(node, 0)]);
+        System.out.println(Arrays.toString(parameterization.getIntervalEndTimes()));
 
     }
 
