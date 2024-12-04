@@ -84,7 +84,8 @@ public class BranchSpikePrior extends Distribution {
     // Bokma,Folmer,van den Brink, Valentijn, Stadler, Tanja. "Unexpectedly many extinct hominins."
     // Evolution, Volume 66, Issue 9, 1 September 2012, Pages 2969–2974. https://doi.org/10.1111/j.1558-5646.2012.01660.x
     public double getExpNrHiddenEventsForInterval(double t0, double t1) {
-        int index = parameterization.getIntervalIndex(t1);
+        // Where time = 0 at the origin and increases into the present
+        int index = parameterization.getIntervalIndex(t0);
         // Get rates for interval
         double lambda = birthRates[index][0];
         double mu = deathRates[index][0];
@@ -94,38 +95,63 @@ public class BranchSpikePrior extends Distribution {
         // Calculate expected number of hidden events for interval
         double c1 = getC1(lambda, mu, psi);
         double c2 = getC2(lambda, mu, psi, rho);
-        double f = ((c2 - 1) * Math.exp(-c1 * t1) - c2 - 1) / ((c2 - 1) * Math.exp(-c1 * t0) - c2 - 1);
+        double f = ((c2 - 1) * Math.exp(-c1 * t0) - c2 - 1) / ((c2 - 1) * Math.exp(-c1 * t1) - c2 - 1);
 
-        return (t0 - t1) * (lambda + mu + psi - c1) + 2 * Math.log(f);
+        return (t1 - t0) * (lambda + mu + psi - c1) + 2 * Math.log(f);
     }
 
 
     public double getExpNrHiddenEventsForBranch(Node node) {
-
-        // Calculate the expected number of hidden events for the first interval
-        double t0 = parameterization.getNodeTime(node, finalSampleOffset);
+        double expNrHiddenEvents = 0;
         int nodeIndex = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
-        double t1 = intervalEndTimes[nodeIndex];
         int parentIndex = parameterization.getNodeIntervalIndex(node.getParent(), finalSampleOffset);
+        double t0 = parameterization.getNodeTime(node.getParent(), finalSampleOffset);
+        double T = parameterization.getNodeTime(node, finalSampleOffset);
 
-        double expNrHiddenEvents = getExpNrHiddenEventsForInterval(t0, t1);
+        if (nodeIndex == parentIndex) return(getExpNrHiddenEventsForInterval(t0, T));
 
-        // Loop through the intervals between the node and its parent
-        for (int i = nodeIndex; i < parentIndex - 1; i++) {
-            t0 = intervalEndTimes[i];
-            t1 = intervalEndTimes[i + 1];
+        else {
+            for (int i = parentIndex; i <= nodeIndex; i++) {
+                double t1 = intervalEndTimes[i];
+                if (t1 < T) {
+                    expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
+                    t0 = t1;
+                }
+            }
 
-            expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
+            expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, T);
+
+            return (expNrHiddenEvents);
         }
-
-        // Calculate the expected number of hidden events for the last interval
-        t0 = intervalEndTimes[parentIndex];
-        t1  = parameterization.getNodeTime(node.getParent(), finalSampleOffset);
-
-        expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
-
-        return expNrHiddenEvents;
     }
+
+//    public double getExpNrHiddenEventsForBranch(Node node) {
+//
+//        // Calculate the expected number of hidden events for the first interval
+//        double t0 = parameterization.getNodeTime(node, finalSampleOffset);
+//        int nodeIndex = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
+//        double t1 = intervalEndTimes[nodeIndex];
+//        int parentIndex = parameterization.getNodeIntervalIndex(node.getParent(), finalSampleOffset);
+//
+//        // if nodeindex == parent
+//        double expNrHiddenEvents = getExpNrHiddenEventsForInterval(t0, t1);
+//
+//        // Loop through the intervals between the node and its parent
+//        for (int i = nodeIndex; i <= parentIndex - 1; i++) {
+//            t0 = intervalEndTimes[i];
+//            t1 = intervalEndTimes[i + 1];
+//
+//            expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
+//        }
+//
+//        // Calculate the expected number of hidden events for the last interval
+//        t0 = intervalEndTimes[parentIndex];
+//        t1  = parameterization.getNodeTime(node.getParent(), finalSampleOffset);
+//
+//        expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
+//
+//        return expNrHiddenEvents;
+//    }
 
 
     // If there are too many hidden events on a branch (e.g. during mixing) then the gamma distribution shape is large, which causes
@@ -267,18 +293,26 @@ public class BranchSpikePrior extends Distribution {
 //                        new RealParameter("0.0"))
 //        );
 
-        //System.out.println(parameterization.getNTypes());
         BranchSpikePrior bsp = new BranchSpikePrior();
         bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "1.0", "spikes", "1.0 0.5 0.1");
 //        System.out.println(bsp.getExpNrHiddenEventsForInterval(0.4, 0.5) + bsp.getExpNrHiddenEventsForInterval(0.5, 1.0)
 //                + bsp.getExpNrHiddenEventsForInterval(1.0, 1.5) + bsp.getExpNrHiddenEventsForInterval(1.5, 1.79)
 //        );
-        Node node = myTree.getNode(5);
-        System.out.println(bsp.getExpNrHiddenEventsForBranch(node));
-
         double[] intervalEndTimes = parameterization.getIntervalEndTimes();
+        Node node = myTree.getNode(5);
+        System.out.println(parameterization.getNodeIntervalIndex(node.getParent(), 0));
         System.out.println(parameterization.getNodeIntervalIndex(node, 0));
-        System.out.println(intervalEndTimes[parameterization.getNodeIntervalIndex(node, 0)]);
+        System.out.println(intervalEndTimes[1]);
+
+//        System.out.println(parameterization.getNodeTime(node, 0));
+//        System.out.println(parameterization.getNodeTime(node.getParent(), 0))
+//        System.out.println(bsp.getExpNrHiddenEventsForInterval(0,0.5) );
+
+//        System.out.println(bsp.getExpNrHiddenEventsForBranch(node));
+
+
+//        System.out.println(parameterization.getNodeIntervalIndex(node, 0));
+//        System.out.println(intervalEndTimes[parameterization.getNodeIntervalIndex(node, 0)]);
         System.out.println(Arrays.toString(parameterization.getIntervalEndTimes()));
 
     }
