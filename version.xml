@@ -5,6 +5,8 @@
 
     <service type="beast.base.core.BEASTInterface">
 
+
+        // FOR TESTING ONLY: TO BE REMOVED //
         <provider classname="gammaspike.clockmodel.PunctuatedClockModel"/>
         <provider classname="gammaspike.distribution.BranchSpikePrior"/>
 

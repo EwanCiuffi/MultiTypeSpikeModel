@@ -1,4 +1,4 @@
-package bdmspike.clockmodel;
+package mutitypespike.clockmodel;
 
 import beast.base.core.Function;
 import beast.base.core.Input;
@@ -10,6 +10,7 @@ import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
 
 // Based on <GammaSpikeModel>  Copyright (C) <2024>  <Jordan Douglas>
+
 
 
 public class PunctuatedClockModel extends BranchRateModel.Base {

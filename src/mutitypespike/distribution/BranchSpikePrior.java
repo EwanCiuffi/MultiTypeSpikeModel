@@ -1,4 +1,4 @@
-package bdmspike.distribution;
+package mutitypespike.distribution;
 
 import bdmmprime.parameterization.*;
 import beast.base.core.Description;
@@ -41,10 +41,9 @@ public class BranchSpikePrior extends Distribution {
 
     public Parameterization parameterization;
     int nTypes;
-    double finalSampleOffset;
-    double[] intervalEndTimes;
+    double[] intervalEndTimes, A, B;
     double[][] birthRates, deathRates, samplingRates, rhoValues;
-
+    private double lambda_i, mu_i, psi_i, t_i, A_i, B_i, finalSampleOffset;
     RealParameter gammaShape;
 
     @Override
@@ -62,6 +61,10 @@ public class BranchSpikePrior extends Distribution {
         gammaShape = gammaShapeInput.get();
         intervalEndTimes = parameterization.getIntervalEndTimes();
         finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
+
+        A = new double[parameterization.getTotalIntervalCount()];
+        B = new double[parameterization.getTotalIntervalCount()];
+        computeConstants(A,B);
 
         if (spikesInput.get().getDimension() != treeInput.get().getInternalNodeCount() ){
             throw new RuntimeException("Error: Dimension of spikesInput does not match the number of internal nodes");
@@ -101,7 +104,7 @@ public class BranchSpikePrior extends Distribution {
     }
 
 
-    public double getExpNrHiddenEventsForBranch(Node node) {
+    public double getExpNrHiddenEventsForBranch_old(Node node) {
         // Forward in time calculation i.e. Time(parentNode) < Time(node)
         double expNrHiddenEvents = 0;
         int nodeIndex = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
@@ -122,33 +125,94 @@ public class BranchSpikePrior extends Distribution {
         return (expNrHiddenEvents);
     }
 
-//    public double getExpNrHiddenEventsForBranch(Node node) {
-//
-//        // Calculate the expected number of hidden events for the first interval
-//        double t0 = parameterization.getNodeTime(node, finalSampleOffset);
-//        int nodeIndex = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
-//        double t1 = intervalEndTimes[nodeIndex];
-//        int parentIndex = parameterization.getNodeIntervalIndex(node.getParent(), finalSampleOffset);
-//
-//        // if nodeindex == parent
-//        double expNrHiddenEvents = getExpNrHiddenEventsForInterval(t0, t1);
-//
-//        // Loop through the intervals between the node and its parent
-//        for (int i = nodeIndex; i <= parentIndex - 1; i++) {
-//            t0 = intervalEndTimes[i];
-//            t1 = intervalEndTimes[i + 1];
-//
-//            expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
-//        }
-//
-//        // Calculate the expected number of hidden events for the last interval
-//        t0 = intervalEndTimes[parentIndex];
-//        t1  = parameterization.getNodeTime(node.getParent(), finalSampleOffset);
-//
-//        expNrHiddenEvents += getExpNrHiddenEventsForInterval(t0, t1);
-//
-//        return expNrHiddenEvents;
-//    }
+
+    private void computeConstants(double[] A, double[] B) {
+
+        for (int i = parameterization.getTotalIntervalCount() - 1; i >= 0; i--) {
+
+            double p_i_prev;
+            if (i + 1 < parameterization.getTotalIntervalCount()) {
+                p_i_prev = get_p_i(parameterization.getBirthRates()[i + 1][0],
+                        parameterization.getDeathRates()[i + 1][0],
+                        parameterization.getSamplingRates()[i + 1][0],
+                        A[i + 1], B[i + 1],
+                        parameterization.getIntervalEndTimes()[i + 1],
+                        parameterization.getIntervalEndTimes()[i]);
+            } else {
+                p_i_prev = 1.0;
+            }
+
+            double rho_i = parameterization.getRhoValues()[i][0];
+            double lambda_i = parameterization.getBirthRates()[i][0];
+            double mu_i = parameterization.getDeathRates()[i][0];
+            double psi_i = parameterization.getSamplingRates()[i][0];
+
+            A[i] = Math.sqrt((lambda_i - mu_i - psi_i) * (lambda_i - mu_i - psi_i) + 4 * lambda_i * psi_i);
+            B[i] = ((1 - 2 * (1 - rho_i) * p_i_prev) * lambda_i + mu_i + psi_i) / A[i];
+        }
+    }
+
+
+    private double get_p_i(double lambda, double mu, double psi, double A, double B, double t_i, double t) {
+
+        if (lambda > 0.0) {
+            double v = Math.exp(A * (t_i - t)) * (1 + B);
+            return (lambda + mu + psi - A * (v - (1 - B)) / (v + (1 - B)))
+                    / (2 * lambda);
+        } else {
+            // The limit of p_i as lambda -> 0
+            return 0.5;
+        }
+    }
+
+
+
+    private double integral_p_i(double t_0, double t_1) {
+        double t0 = t_i - t_0;
+        double t1 = t_i - t_1;
+
+        return (1.0 / (2.0 * lambda_i)) * ((t0 - t1) * (mu_i + psi_i + lambda_i + A_i) + 2.0 * Math
+                .log(((-B_i - 1) * Math.exp(A_i * t1) + B_i - 1)
+                        / ((-B_i - 1) * Math.exp(A_i * t0) + B_i - 1)));
+    }
+
+
+
+    private void updateParametersforInterval(int i) {
+        lambda_i = parameterization.getBirthRates()[i][0];
+        mu_i = parameterization.getDeathRates()[i][0];
+        psi_i = parameterization.getSamplingRates()[i][0];
+        t_i = parameterization.getIntervalEndTimes()[i];
+        A_i = A[i];
+        B_i = B[i];
+    }
+
+
+
+    public double getExpNrHiddenEventsForBranch(Node node) {
+        // Forward in time calculation i.e. Time(parentNode) < Time(node)
+        double expNrHiddenEvents = 0;
+        int nodeIndex = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
+        int parentIndex = parameterization.getNodeIntervalIndex(node.getParent(), finalSampleOffset);
+        double t0 = parameterization.getNodeTime(node.getParent(), finalSampleOffset);
+        double T = parameterization.getNodeTime(node, finalSampleOffset);
+        updateParametersforInterval(parentIndex);
+
+        if (nodeIndex == parentIndex) return(2*lambda_i*integral_p_i(t0, T));
+
+        for (int i = parentIndex; i <= nodeIndex - 1; i++) {
+            if (i > parentIndex) updateParametersforInterval(i);
+
+            double t1 = intervalEndTimes[i];
+            expNrHiddenEvents += 2*lambda_i*integral_p_i(t0, t1);
+            t0 = t1;
+        }
+
+        updateParametersforInterval(nodeIndex);
+        expNrHiddenEvents += 2*lambda_i*integral_p_i(t0, T);
+
+        return (expNrHiddenEvents);
+    }
 
 
     // If there are too many hidden events on a branch (e.g. during mixing) then the gamma distribution shape is large, which causes
@@ -252,43 +316,43 @@ public class BranchSpikePrior extends Distribution {
         RealParameter originParam = new RealParameter("2.0");
 
         Parameterization parameterization = new CanonicalParameterization();
-        parameterization.initByName(
-                "typeSet", new TypeSet(1),
-                "processLength", originParam,
-                "birthRate", new SkylineVectorParameter(
-                        new RealParameter("0.25"),
-                        new RealParameter("4.0 5.0"), 1),
-                "deathRate", new SkylineVectorParameter(
-                        new RealParameter("0.5"),
-                        new RealParameter("3.0 2.0"), 1),
-                "samplingRate", new SkylineVectorParameter(
-                        new RealParameter("1.0"),
-                        new RealParameter("1.5 2.5"), 1),
-                "removalProb", new SkylineVectorParameter(
-                        new RealParameter("1.5"),
-                        new RealParameter("1.0 3.0"), 1),
-                "rhoSampling", new TimedParameter(
-                        originParam,
-                        new RealParameter("0.0")));
 //        parameterization.initByName(
 //                "typeSet", new TypeSet(1),
 //                "processLength", originParam,
 //                "birthRate", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("4.0"), 1),
+//                        new RealParameter("0.25"),
+//                        new RealParameter("4.0 5.0"), 1),
 //                "deathRate", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("3.0"), 1),
+//                        new RealParameter("0.5"),
+//                        new RealParameter("3.0 2.0"), 1),
 //                "samplingRate", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("1.5"), 1),
+//                        new RealParameter("1.0"),
+//                        new RealParameter("1.5 2.5"), 1),
 //                "removalProb", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("1.0"), 1),
+//                        new RealParameter("1.5"),
+//                        new RealParameter("1.0 3.0"), 1),
 //                "rhoSampling", new TimedParameter(
 //                        originParam,
-//                        new RealParameter("0.0"))
-//        );
+//                        new RealParameter("0.0")));
+        parameterization.initByName(
+                "typeSet", new TypeSet(1),
+                "processLength", originParam,
+                "birthRate", new SkylineVectorParameter(
+                        null,
+                        new RealParameter("0.75"), 1),
+                "deathRate", new SkylineVectorParameter(
+                        null,
+                        new RealParameter("0.3"), 1),
+                "samplingRate", new SkylineVectorParameter(
+                        null,
+                        new RealParameter("0.1"), 1),
+                "removalProb", new SkylineVectorParameter(
+                        null,
+                        new RealParameter("0"), 1),
+                "rhoSampling", new TimedParameter(
+                        originParam,
+                        new RealParameter("1.0"))
+        );
 
         BranchSpikePrior bsp = new BranchSpikePrior();
         bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "1.0", "spikes", "1.0 0.5 0.1");
@@ -297,13 +361,17 @@ public class BranchSpikePrior extends Distribution {
 //                + bsp.getExpNrHiddenEventsForInterval(1.0, 1.5) + bsp.getExpNrHiddenEventsForInterval(1.5, 1.79)
 //        );
 
+
+  //
+
         double[] intervalEndTimes = parameterization.getIntervalEndTimes();
         Node node = myTree.getNode(5);
-        System.out.println(bsp.calculateLogP());
+//        System.out.println(bsp.calculateLogP());
 //        System.out.println(parameterization.getNodeIntervalIndex(node.getParent(), 0));
 //        System.out.println(parameterization.getNodeIntervalIndex(node, 0));
 //        System.out.println(intervalEndTimes[1]);
-//        System.out.println(bsp.getExpNrHiddenEventsForBranch(node));
+        System.out.println(bsp.getExpNrHiddenEventsForBranch(node));
+//        System.out.println(bsp.getExpNrHiddenEventsForBranch_old(node));
 
 //        System.out.println(parameterization.getNodeTime(node, 0));
 //        System.out.println(parameterization.getNodeTime(node.getParent(), 0))
@@ -311,12 +379,10 @@ public class BranchSpikePrior extends Distribution {
 
 //        System.out.println(bsp.getExpNrHiddenEventsForBranch(node));
 
-
-//        System.out.println(parameterization.getNodeIntervalIndex(node, 0));
-//        System.out.println(intervalEndTimes[parameterization.getNodeIntervalIndex(node, 0)]);
-        System.out.println(Arrays.toString(parameterization.getIntervalEndTimes()));
-
+//        System.out.println(parameterization.getBirthRates()[0][0]);
+//        System.out.println(parameterization.getNodeIntervalIndex(node.getParent(), 0));
+//        System.out.println(Arrays.toString(parameterization.getIntervalEndTimes()));
+//        System.out.println(Arrays.toString(bsp.A));
     }
-
 }
 
