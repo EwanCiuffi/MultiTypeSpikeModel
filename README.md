@@ -1,1 +1,1 @@
-# BDMSpikeModel
+# MultiType Spike Model
