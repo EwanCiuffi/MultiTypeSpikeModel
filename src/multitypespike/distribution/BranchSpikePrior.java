@@ -1,4 +1,4 @@
-package mutitypespike.distribution;
+package multitypespike.distribution;
 
 import bdmmprime.parameterization.*;
 import beast.base.core.Description;
