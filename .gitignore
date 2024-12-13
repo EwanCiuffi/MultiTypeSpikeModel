@@ -12,3 +12,7 @@
 
 # Ignore macOS system files
 .DS_Store
+
+.Rhistory
+.Rapp.history
+
