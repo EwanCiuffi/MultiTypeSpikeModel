@@ -12,8 +12,11 @@ import beast.base.inference.State;
 import beast.base.inference.parameter.BooleanParameter;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
+import org.apache.commons.math.MathException;
 import org.apache.commons.math.distribution.GammaDistribution;
 import org.apache.commons.math.distribution.GammaDistributionImpl;
+import org.apache.commons.math.distribution.PoissonDistribution;
+import org.apache.commons.math.distribution.PoissonDistributionImpl;
 
 import java.util.*;
 
@@ -23,21 +26,26 @@ import java.util.*;
 @Description("Prior distribution on the spike size of a branch, " +
         "dependent on the number of hidden events along that branch")
 public class BranchSpikePrior extends Distribution {
+
     public Input<Parameterization> parameterizationInput = new Input<>("parameterization",
             "BDMM-prime parameterization object (see BDMM-prime package for available parameterizations)",
             Input.Validate.REQUIRED);
+
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
+
     final public Input<RealParameter> gammaShapeInput = new Input<>("gammaShape", "shape hyper-parameter for the " +
             "gamma distribution of the spikes", Input.Validate.REQUIRED);
+
     final public Input<RealParameter> spikesInput = new Input<>("spikes", "vector of spike amplitudes for each branch",
             Input.Validate.REQUIRED);
+
     public Input<Function> finalSampleOffsetInput = new Input<>("finalSampleOffset",
-            "If provided, the difference in time between the final sample and the end of the BD process.",
+            "if provided, the difference in time between the final sample and the end of the BD process",
             new RealParameter("0.0"));
 
-//  For model selection: to be implemented.
     final public Input<BooleanParameter> indicatorInput = new Input<>("indicator",
-            "indicator for presence/absence of spikes", Input.Validate.OPTIONAL);
+            "indicator for presence/absence of spikes, for model selection",
+            new BooleanParameter("true"));
 
 
     public Parameterization parameterization;
@@ -61,10 +69,15 @@ public class BranchSpikePrior extends Distribution {
 
         A = new double[parameterization.getTotalIntervalCount()];
         B = new double[parameterization.getTotalIntervalCount()];
-        computeConstants(A,B);
 
-        if (spikesInput.get().getDimension() != treeInput.get().getInternalNodeCount() ){
-            throw new RuntimeException("Error: Dimension of spikesInput does not match the number of internal nodes");
+        computeConstants(A, B);
+//        if (indicatorInput.get() == null || (indicatorInput.get() != null && indicatorInput.get().getValue()) ) {
+//            computeConstants(A, B);
+//        }
+
+        if (spikesInput.get().getDimension() != treeInput.get().getNodeCount() - 1){
+            throw new RuntimeException("Error: Dimension of spikesInput, " + spikesInput.get().getDimension() +
+                    " does not match the number of branches, " + (treeInput.get().getNodeCount() - 1) );
         }
     }
 
@@ -110,11 +123,11 @@ public class BranchSpikePrior extends Distribution {
 
 
 
-    private double integral_p_i(double t_0, double t_1) {
+    private double integral_2lambda_i_p_i(double t_0, double t_1) {
         double t0 = t_i - t_0;
         double t1 = t_i - t_1;
 
-        return (1.0 / (2.0 * lambda_i)) * ((t0 - t1) * (mu_i + psi_i + lambda_i + A_i) + 2.0 * Math
+        return ((t0 - t1) * (mu_i + psi_i + lambda_i + A_i) + 2.0 * Math
                 .log(((-B_i - 1) * Math.exp(A_i * t1) + B_i - 1)
                         / ((-B_i - 1) * Math.exp(A_i * t0) + B_i - 1)));
     }
@@ -128,13 +141,13 @@ public class BranchSpikePrior extends Distribution {
         t_i = parameterization.getIntervalEndTimes()[i];
         A_i = A[i];
         B_i = B[i];
-        System.out.println("i=" + i + ", A_i=" + A_i + ", B_i=" + B_i);
-        
     }
 
 
 
     public double getExpNrHiddenEventsForBranch(Node node) {
+        if(node.isRoot()) throw new RuntimeException("node is root");
+
         // Forward in time calculation i.e. Time(parentNode) < Time(node)
         double expNrHiddenEvents = 0;
         int nodeIndex = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
@@ -143,18 +156,18 @@ public class BranchSpikePrior extends Distribution {
         double T = parameterization.getNodeTime(node, finalSampleOffset);
         updateParametersforInterval(parentIndex);
 
-        if (nodeIndex == parentIndex) return(2*lambda_i*integral_p_i(t0, T));
+        if (nodeIndex == parentIndex) return(integral_2lambda_i_p_i(t0, T));
 
         for (int i = parentIndex; i <= nodeIndex - 1; i++) {
             if (i > parentIndex) updateParametersforInterval(i);
 
             double t1 = intervalEndTimes[i];
-            expNrHiddenEvents += 2*lambda_i*integral_p_i(t0, t1);
+            expNrHiddenEvents += integral_2lambda_i_p_i(t0, t1);
             t0 = t1;
         }
 
         updateParametersforInterval(nodeIndex);
-        expNrHiddenEvents += 2*lambda_i*integral_p_i(t0, T);
+        expNrHiddenEvents += integral_2lambda_i_p_i(t0, T);
 
         return (expNrHiddenEvents);
     }
@@ -165,11 +178,17 @@ public class BranchSpikePrior extends Distribution {
     final double MAX_CUM_SUM = 0.999;
 
     public double calculateLogP() {
-        logP = 0;
+        logP = 0.0;
+
+        // If indicator is FALSE, then return log probability = 0
+        if (indicatorInput.get() != null && !indicatorInput.get().getValue()) {
+            return 0;
+        }
 
         // Calculate density of the spike size of each branch, assuming that each spike is drawn from a
         // Gamma(alpha, beta) distribution, integrating across all possible numbers of hidden speciation events.
-        for (int nodeNr = 0; nodeNr < treeInput.get().getInternalNodeCount(); nodeNr++) {
+        for (int nodeNr = 0; nodeNr < treeInput.get().getNodeCount() - 1; nodeNr++) {
+//        for (int nodeNr = 0; nodeNr < treeInput.get().getInternalNodeCount(); nodeNr++) {
 
             double branchSpike = spikesInput.get().getValue(nodeNr);
 
@@ -182,6 +201,7 @@ public class BranchSpikePrior extends Distribution {
                 double branchP = 0;
                 int k = 0;
                 double cumsum = 0;
+
                 while (cumsum < MAX_CUM_SUM) {
 
                     // Probability of observing k hidden events P(k) under a Poisson(mu),
@@ -208,7 +228,6 @@ public class BranchSpikePrior extends Distribution {
                     k++;
 
                 }
-
                 logP += Math.log(branchP);
 
             }
@@ -241,7 +260,48 @@ public class BranchSpikePrior extends Distribution {
 
     @Override
     public void sample(State state, Random random) {
+
+        int dimension = treeInput.get().getNodeCount() - 1;
+
+        spikesInput.get().setDimension(dimension);
+        Integer NrHiddenEvents = 0;
+
+        for (int nodeNr = 0; nodeNr < dimension; nodeNr++) {
+
+            Node node = treeInput.get().getNode(nodeNr);
+            double expNrHiddenEvents = getExpNrHiddenEventsForBranch(node);
+
+            if (expNrHiddenEvents > 0) {
+
+                //Sample from poisson(mu) where mu = expNrHiddenEvents
+                PoissonDistribution poisson = new PoissonDistributionImpl(expNrHiddenEvents);
+                try {
+                    NrHiddenEvents = poisson.inverseCumulativeProbability(random.nextFloat());
+                } catch (MathException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+
+            // Sample spikes from gamma distribution
+            double alpha = gammaShape.getValue() * (NrHiddenEvents + 1);
+            double beta = 1 / gammaShape.getValue();
+
+
+            GammaDistribution gamma = new GammaDistributionImpl(alpha, beta);
+
+            try {
+                double spike = gamma.inverseCumulativeProbability(random.nextFloat());
+                spikesInput.get().setValue(nodeNr, spike);
+
+            } catch (MathException e) {
+                e.printStackTrace();
+                throw new IllegalArgumentException("Unexpected error when sampling from Gamma(" + alpha + ", " + beta + ")");
+            }
+        }
     }
+
+
 
     @Override
     protected boolean requiresRecalculation() {
@@ -253,63 +313,70 @@ public class BranchSpikePrior extends Distribution {
 
 
 
-
     /*Testing*/
     public static void main(String[] args) {
-     String newick = "((0:1.0,1:1.0)4:1.0,(2:1.0,3:1.0)5:0.5)6:0.0;";
+//     String newick =  "((0:1.0,1:1.0)4:1.0,(2:1.0,3:1.0)5:0.5)6:0.0;";
+        String newick = "(1:0.02214258116,2:0.5403408232):0;";
         TreeParser treeParser = new TreeParser(newick, false, false, false, 0);
         Tree myTree = treeParser;
         //Node[] node = myTree.getNodesAsArray();
 
-        RealParameter originParam = new RealParameter("2.0");
+        RealParameter originParam = new RealParameter("5.5");
 
         Parameterization parameterization = new CanonicalParameterization();
-        parameterization.initByName(
-                "typeSet", new TypeSet(1),
-                "processLength", originParam,
-                "birthRate", new SkylineVectorParameter(
-                        new RealParameter("0.25"),
-                        new RealParameter("0.5 1.0"), 1),
-                "deathRate", new SkylineVectorParameter(
-                        new RealParameter("0.25"),
-                        new RealParameter("0.3 0.5"), 1),
-                "samplingRate", new SkylineVectorParameter(
-                        new RealParameter("0.25"),
-                        new RealParameter("0.1 0.25"), 1),
-                "removalProb", new SkylineVectorParameter(
-                        new RealParameter("0.25"),
-                        new RealParameter("1.0 1.0"), 1),
-                "rhoSampling", new TimedParameter(
-                        originParam,
-                        new RealParameter("0.0")));
 //        parameterization.initByName(
 //                "typeSet", new TypeSet(1),
 //                "processLength", originParam,
 //                "birthRate", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("0.75"), 1),
+//                        new RealParameter("0.25"),
+//                        new RealParameter("0.5 1.0"), 1),
 //                "deathRate", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("0.3"), 1),
+//                        new RealParameter("0.25"),
+//                        new RealParameter("0.3 0.5"), 1),
 //                "samplingRate", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("0.1"), 1),
+//                        new RealParameter("0.25"),
+//                        new RealParameter("0.1 0.25"), 1),
 //                "removalProb", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("0"), 1),
+//                        new RealParameter("0.25"),
+//                        new RealParameter("1.0 1.0"), 1),
 //                "rhoSampling", new TimedParameter(
 //                        originParam,
-//                        new RealParameter("1.0"))
-//        );
+//                        new RealParameter("0.0")));
+        parameterization.initByName(
+                "typeSet", new TypeSet(1),
+                "processLength", originParam,
+                "birthRate", new SkylineVectorParameter(
+                        null,
+                        new RealParameter("2.5"), 1),
+                "deathRate", new SkylineVectorParameter(
+                        null,
+                        new RealParameter("2.0"), 1),
+                "samplingRate", new SkylineVectorParameter(
+                        null,
+                        new RealParameter("0.15"), 1),
+                "removalProb", new SkylineVectorParameter(
+                        null,
+                        new RealParameter("0"), 1),
+                "rhoSampling", new TimedParameter(
+                        originParam,
+                        new RealParameter("1.0"))
+        );
 
 
         BranchSpikePrior bsp = new BranchSpikePrior();
-        bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "1.0", "spikes", "1.0 0.5 0.1");
+        bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "2.0", "spikes", "1.0 1.0");
 
-        double[] intervalEndTimes = parameterization.getIntervalEndTimes();
-        Node node = myTree.getNode(5);
+//        double[] intervalEndTimes = parameterization.getIntervalEndTimes();
+        Node node1 = myTree.getNode(1);
+        Node node2 = myTree.getNode(2);
 
-        System.out.println(bsp.getExpNrHiddenEventsForBranch(node));
+        System.out.println(bsp.getExpNrHiddenEventsForBranch(node1));
+        System.out.println(bsp.getExpNrHiddenEventsForBranch(node2));
+
+//        System.out.println(bsp.calculateLogP());
+//        System.out.println(node.isRoot()) ;
+
+
 
     }
 }
