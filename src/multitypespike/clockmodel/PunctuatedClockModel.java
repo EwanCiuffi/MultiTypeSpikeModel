@@ -20,7 +20,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     final public Input<RealParameter> ratesInput = new Input<>("rates", "the rates associated with nodes in the tree for sampling of individual rates among branches.", Input.Validate.OPTIONAL);
 
     final public Input<BooleanParameter> relaxedInput = new Input<>("relaxed", "if false then use strict clock", Input.Validate.OPTIONAL);
-    final public Input<BooleanParameter> indicatorInput = new Input<>("indicator", "burst size is 0 of this is false", Input.Validate.OPTIONAL);
+    final public Input<BooleanParameter> indicatorInput = new Input<>("indicator", "burst size is 0 if this is false", Input.Validate.OPTIONAL);
 
     int nRates;
     double[] ratesArray;
@@ -28,7 +28,6 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         this.nRates = treeInput.get().getNodeCount();
         this.ratesArray = new double[this.nRates];
     }
-
 
 
     public double getSpikeSize(Node node) {
@@ -58,7 +57,6 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     @Override
     public double getRateForBranch(Node node) {
 
-
         // Root has average rate
         double baseRate = meanRateInput.get().getArrayValue();
         if (node.getLength() <= 0 || node.isDirectAncestor() || node.isRoot()) return baseRate;
@@ -72,27 +70,27 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         // Effective rate takes into account burst and base rate
         double effectiveRate = branchDistance / node.getLength();
 
-
         return effectiveRate;
     }
 
     @Override
     protected boolean requiresRecalculation() {
 
+        return true;
 
-        if (InputUtil.isDirty(spikesInput) || InputUtil.isDirty(meanRateInput) || InputUtil.isDirty(spikeMeanInput)) {
-            return true;
-        }
-
-        if (relaxedInput.get() != null && InputUtil.isDirty(relaxedInput)) {
-            return true;
-        }
-
-        if (indicatorInput.get() != null && InputUtil.isDirty(indicatorInput)) {
-            return true;
-        }
-
-        return false;
+//        if (InputUtil.isDirty(spikesInput) || InputUtil.isDirty(meanRateInput) || InputUtil.isDirty(spikeMeanInput)) {
+//            return true;
+//        }
+//
+//        if (relaxedInput.get() != null && InputUtil.isDirty(relaxedInput)) {
+//            return true;
+//        }
+//
+//        if (indicatorInput.get() != null && InputUtil.isDirty(indicatorInput)) {
+//            return true;
+//        }
+//
+//        return false;
     }
 
 
