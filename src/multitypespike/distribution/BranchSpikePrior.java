@@ -6,7 +6,6 @@ import beast.base.core.Function;
 import beast.base.core.Input;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
-import beast.base.evolution.tree.TreeParser;
 import beast.base.inference.Distribution;
 import beast.base.inference.State;
 import beast.base.inference.parameter.BooleanParameter;
@@ -41,9 +40,9 @@ public class BranchSpikePrior extends Distribution {
             "if provided, the difference in time between the final sample and the end of the BD process",
             new RealParameter("0.0"));
 
-    final public Input<BooleanParameter> indicatorInput = new Input<>("indicator",
-            "indicator for presence/absence of spikes, for model selection",
-            new BooleanParameter("true"));
+//    final public Input<BooleanParameter> indicatorInput = new Input<>("indicator",
+//            "indicator for presence/absence of spikes, for model selection",
+//            new BooleanParameter("true"));
 
 
     public Parameterization parameterization;
@@ -179,21 +178,20 @@ public class BranchSpikePrior extends Distribution {
         logP = 0.0;
 
         // If indicator is FALSE, then return log probability = 0
-        if (indicatorInput.get() != null && !indicatorInput.get().getValue()) {
-            return 0;
-        }
+//        if (indicatorInput.get() != null && !indicatorInput.get().getValue()) {
+//            return 0;
+//        }
 
         // Calculate density of the spike size of each branch, assuming that each spike is drawn from a
         // Gamma(alpha, beta) distribution, integrating across all possible numbers of hidden speciation events.
         for (int nodeNr = 0; nodeNr < treeInput.get().getNodeCount() - 1; nodeNr++) {
-//        for (int nodeNr = 0; nodeNr < treeInput.get().getInternalNodeCount(); nodeNr++) {
 
             double branchSpike = spikesInput.get().getValue(nodeNr);
 
             // Integrate over all possible spike amplitude values
             Node node = treeInput.get().getNode(nodeNr);
             double expNrHiddenEvents = getExpNrHiddenEventsForBranch(node);
-//            System.out.println("node: " + node.getNr() + " branchLength: " + node.getLength());
+
             if (expNrHiddenEvents > 0) {
 
                 double branchP = 0;
