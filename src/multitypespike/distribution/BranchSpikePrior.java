@@ -9,16 +9,12 @@ import beast.base.evolution.tree.Tree;
 import beast.base.evolution.tree.TreeParser;
 import beast.base.inference.Distribution;
 import beast.base.inference.State;
-import beast.base.inference.distribution.Poisson;
 import beast.base.inference.parameter.BooleanParameter;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
 import beast.base.util.Randomizer;
-import org.apache.commons.math.MathException;
 import org.apache.commons.math.distribution.GammaDistribution;
 import org.apache.commons.math.distribution.GammaDistributionImpl;
-import org.apache.commons.math.distribution.PoissonDistribution;
-import org.apache.commons.math.distribution.PoissonDistributionImpl;
 
 import java.util.*;
 
@@ -197,7 +193,7 @@ public class BranchSpikePrior extends Distribution {
             // Integrate over all possible spike amplitude values
             Node node = treeInput.get().getNode(nodeNr);
             double expNrHiddenEvents = getExpNrHiddenEventsForBranch(node);
-
+//            System.out.println("node: " + node.getNr() + " branchLength: " + node.getLength());
             if (expNrHiddenEvents > 0) {
 
                 double branchP = 0;
@@ -231,6 +227,12 @@ public class BranchSpikePrior extends Distribution {
 
                 }
                 logP += Math.log(branchP);
+
+            } else {
+
+                // Case when the branch length is 0 (e.g. sampled ancestor)
+                GammaDistribution gamma = new GammaDistributionImpl(gammaShape.getValue(), 1 / gammaShape.getValue());
+                logP += gamma.logDensity(branchSpike);
 
             }
 
@@ -298,72 +300,5 @@ public class BranchSpikePrior extends Distribution {
 
 
 
-
-    /*Testing*/
-    public static void main(String[] args) {
-//     String newick =  "((0:1.0,1:1.0)4:1.0,(2:1.0,3:1.0)5:0.5)6:0.0;";
-        String newick = "(1:0.02214258116,2:0.5403408232):0;";
-        TreeParser treeParser = new TreeParser(newick, false, false, false, 0);
-        Tree myTree = treeParser;
-        //Node[] node = myTree.getNodesAsArray();
-
-        RealParameter originParam = new RealParameter("5.5");
-
-        Parameterization parameterization = new CanonicalParameterization();
-//        parameterization.initByName(
-//                "typeSet", new TypeSet(1),
-//                "processLength", originParam,
-//                "birthRate", new SkylineVectorParameter(
-//                        new RealParameter("0.25"),
-//                        new RealParameter("0.5 1.0"), 1),
-//                "deathRate", new SkylineVectorParameter(
-//                        new RealParameter("0.25"),
-//                        new RealParameter("0.3 0.5"), 1),
-//                "samplingRate", new SkylineVectorParameter(
-//                        new RealParameter("0.25"),
-//                        new RealParameter("0.1 0.25"), 1),
-//                "removalProb", new SkylineVectorParameter(
-//                        new RealParameter("0.25"),
-//                        new RealParameter("1.0 1.0"), 1),
-//                "rhoSampling", new TimedParameter(
-//                        originParam,
-//                        new RealParameter("0.0")));
-        parameterization.initByName(
-                "typeSet", new TypeSet(1),
-                "processLength", originParam,
-                "birthRate", new SkylineVectorParameter(
-                        null,
-                        new RealParameter("2.5"), 1),
-                "deathRate", new SkylineVectorParameter(
-                        null,
-                        new RealParameter("2.0"), 1),
-                "samplingRate", new SkylineVectorParameter(
-                        null,
-                        new RealParameter("0.15"), 1),
-                "removalProb", new SkylineVectorParameter(
-                        null,
-                        new RealParameter("0"), 1),
-                "rhoSampling", new TimedParameter(
-                        originParam,
-                        new RealParameter("1.0"))
-        );
-
-
-        BranchSpikePrior bsp = new BranchSpikePrior();
-        bsp.initByName("parameterization", parameterization, "tree", myTree, "gammaShape", "2.0", "spikes", "1.0 1.0");
-
-//        double[] intervalEndTimes = parameterization.getIntervalEndTimes();
-        Node node1 = myTree.getNode(1);
-        Node node2 = myTree.getNode(2);
-
-        System.out.println(bsp.getExpNrHiddenEventsForBranch(node1));
-        System.out.println(bsp.getExpNrHiddenEventsForBranch(node2));
-
-//        System.out.println(bsp.calculateLogP());
-//        System.out.println(node.isRoot()) ;
-
-
-
-    }
 }
 
