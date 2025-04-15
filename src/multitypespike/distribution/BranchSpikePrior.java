@@ -8,7 +8,6 @@ import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
 import beast.base.inference.Distribution;
 import beast.base.inference.State;
-import beast.base.inference.parameter.BooleanParameter;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
 import beast.base.util.Randomizer;
@@ -30,7 +29,7 @@ public class BranchSpikePrior extends Distribution {
 
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
 
-    final public Input<RealParameter> gammaShapeInput = new Input<>("gammaShape", "shape hyper-parameter for the " +
+    final public Input<RealParameter> spikeShapeInput = new Input<>("spikeShape", "shape hyper-parameter for the " +
             "gamma distribution of the spikes", Input.Validate.REQUIRED);
 
     final public Input<RealParameter> spikesInput = new Input<>("spikes", "vector of spike amplitudes for each branch",
@@ -49,18 +48,17 @@ public class BranchSpikePrior extends Distribution {
     int nTypes;
     double[] intervalEndTimes, A, B;
     private double lambda_i, mu_i, psi_i, t_i, A_i, B_i, finalSampleOffset;
-    RealParameter gammaShape;
+    RealParameter spikeShape;
 
     
     @Override
     public void initAndValidate() {
         parameterization = parameterizationInput.get();
-        nTypes = parameterization.getNTypes();
+    nTypes = parameterization.getNTypes();
         if (nTypes != 1) {
             throw new RuntimeException("Error: Not implemented for models with >1 type yet");
         }
 
-        gammaShape = gammaShapeInput.get();
         intervalEndTimes = parameterization.getIntervalEndTimes();
         finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
 
@@ -68,9 +66,6 @@ public class BranchSpikePrior extends Distribution {
         B = new double[parameterization.getTotalIntervalCount()];
 
         computeConstants(A, B);
-//        if (indicatorInput.get() == null || (indicatorInput.get() != null && indicatorInput.get().getValue()) ) {
-//            computeConstants(A, B);
-//        }
 
         if (spikesInput.get().getDimension() != treeInput.get().getNodeCount() - 1){
             throw new RuntimeException("Error: Dimension of spikesInput, " + spikesInput.get().getDimension() +
@@ -177,10 +172,12 @@ public class BranchSpikePrior extends Distribution {
     public double calculateLogP() {
         logP = 0.0;
 
-        // If indicator is FALSE, then return log probability = 0
-//        if (indicatorInput.get() != null && !indicatorInput.get().getValue()) {
-//            return 0;
-//        }
+        // Check spikeShape is positive
+        double spikeShape = spikeShapeInput.get().getValue();
+        if (spikeShape <= 0) {
+            logP = Double.NEGATIVE_INFINITY;
+            return logP;
+        }
 
         // Calculate density of the spike size of each branch, assuming that each spike is drawn from a
         // Gamma(alpha, beta) distribution, integrating across all possible numbers of hidden speciation events.
@@ -208,8 +205,8 @@ public class BranchSpikePrior extends Distribution {
                     double pk = Math.exp(logpk);
                     cumsum += pk;
 
-                    double alpha = gammaShape.getValue() * (k + 1);
-                    double beta = 1 / gammaShape.getValue();
+                    double alpha = spikeShape * (k + 1);
+                    double beta = 1 / spikeShape;
 
                     GammaDistribution gamma = new GammaDistributionImpl(alpha, beta);
                     double gammaLogP = gamma.logDensity(branchSpike);
@@ -229,7 +226,7 @@ public class BranchSpikePrior extends Distribution {
             } else {
 
                 // Case when the branch length is 0 (e.g. sampled ancestor)
-                GammaDistribution gamma = new GammaDistributionImpl(gammaShape.getValue(), 1 / gammaShape.getValue());
+                GammaDistribution gamma = new GammaDistributionImpl(spikeShape, 1 / spikeShape);
                 logP += gamma.logDensity(branchSpike);
 
             }
@@ -253,10 +250,10 @@ public class BranchSpikePrior extends Distribution {
     @Override
     public List<String> getConditions() {
         List<String> conds = new ArrayList<>();
-        conds.add(gammaShapeInput.get().getID());
+        conds.add(spikeShapeInput.get().getID());
         if (treeInput.get() != null) conds.add(treeInput.get().getID());
         if (parameterizationInput.get() != null) conds.add(parameterizationInput.get().getID());
-        if (gammaShapeInput.get() != null) conds.add(gammaShapeInput.get().getID());
+        if (spikeShapeInput.get() != null) conds.add(spikeShapeInput.get().getID());
         return conds;
     }
 
@@ -264,7 +261,7 @@ public class BranchSpikePrior extends Distribution {
     public void sample(State state, Random random) {
 
         int dimension = treeInput.get().getNodeCount() - 1;
-
+        double spikeShape = spikeShapeInput.get().getValue();
         spikesInput.get().setDimension(dimension);
         Long NrHiddenEvents = 0L;
 
@@ -277,12 +274,13 @@ public class BranchSpikePrior extends Distribution {
 
 
             // Sample spikes from gamma distribution
-            double alpha = gammaShape.getValue() * (NrHiddenEvents + 1);
-            // double beta = 1 / gammaShape.getValue();
-            // Below lambda is 1/beta, so just use gammaShape.getValue()
+            double alpha = spikeShape * (NrHiddenEvents + 1);
+            // double beta = 1 / spikeShape;
+            // Below lambda is 1/beta, so just use spikeShape
 
-                double spike = Randomizer.nextGamma(alpha, gammaShape.getValue());
-                spikesInput.get().setValue(nodeNr, spike);
+            double spike = Randomizer.nextGamma(alpha, spikeShape);
+
+            spikesInput.get().setValue(nodeNr, spike);
 
         }
     }
@@ -293,7 +291,7 @@ public class BranchSpikePrior extends Distribution {
     protected boolean requiresRecalculation() {
         return super.requiresRecalculation() ||
                 InputUtil.isDirty(spikesInput) ||
-                InputUtil.isDirty(gammaShapeInput);
+                InputUtil.isDirty(spikeShapeInput);
     }
 
 
