@@ -7,7 +7,7 @@
         <provider classname="multitypespike.clockmodel.PunctuatedClockModel"/>
         <provider classname="multitypespike.distribution.BranchSpikePrior"/>
         <provider classname="multitypespike.operator.SpikeUpRateDown"/>
-<!--        <provider classname="multitypespike.distribution.BinomialPrior"/>-->
+        <provider classname="multitypespike.distribution.BinomialPrior"/>
 
 
 
