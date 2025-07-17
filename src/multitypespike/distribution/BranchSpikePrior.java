@@ -29,7 +29,7 @@ public class BranchSpikePrior extends Distribution {
 
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
 
-    final public Input<RealParameter> spikeShapeInput = new Input<>("spikeShape", "shape hyper-parameter for the " +
+    final public Input<RealParameter> spikeShapeInput = new Input<>("spikeShape", "shape parameter for the " +
             "gamma distribution of the spikes", Input.Validate.REQUIRED);
 
     final public Input<RealParameter> spikesInput = new Input<>("spikes", "vector of spike amplitudes for each branch",
@@ -50,18 +50,13 @@ public class BranchSpikePrior extends Distribution {
     @Override
     public void initAndValidate() {
         parameterization = parameterizationInput.get();
-       nTypes = parameterization.getNTypes();
+        nTypes = parameterization.getNTypes();
         if (nTypes != 1) {
             throw new RuntimeException("Error: Not implemented for models with >1 type yet");
         }
 
-        intervalEndTimes = parameterization.getIntervalEndTimes();
-        finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
-
         A = new double[parameterization.getTotalIntervalCount()];
         B = new double[parameterization.getTotalIntervalCount()];
-
-        computeConstants(A, B);
 
         if (spikesInput.get().getDimension() != treeInput.get().getNodeCount()){
             throw new RuntimeException("Error: Dimension of spikesInput, " + spikesInput.get().getDimension() +
@@ -127,6 +122,11 @@ public class BranchSpikePrior extends Distribution {
         mu_i = parameterization.getDeathRates()[i][0];
         psi_i = parameterization.getSamplingRates()[i][0];
         t_i = parameterization.getIntervalEndTimes()[i];
+
+//        System.out.println("i = " + i);
+//        System.out.println("int end times = " + parameterization.getIntervalEndTimes()[i]);
+//        System.out.println("t_i = " + t_i);
+
         A_i = A[i];
         B_i = B[i];
     }
@@ -134,9 +134,8 @@ public class BranchSpikePrior extends Distribution {
 
 
     public double getExpNrHiddenEventsForBranch(Node node) {
-//        if (node.isRoot())
-//            throw new RuntimeException("node is root");
-
+        if (node.isRoot()) return 0;
+//        System.out.println("node Nr = " + node.getNr());
         // Forward in time calculation i.e. Time(parentNode) < Time(node)
         double expNrHiddenEvents = 0;
         int nodeIndex = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
@@ -169,6 +168,10 @@ public class BranchSpikePrior extends Distribution {
     public double calculateLogP() {
         logP = 0.0;
 
+        intervalEndTimes = parameterization.getIntervalEndTimes();
+        finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
+        computeConstants(A, B);
+
         // Check spikeShape is positive
         double spikeShape = spikeShapeInput.get().getValue();
         if (spikeShape <= 0) {
@@ -184,15 +187,17 @@ public class BranchSpikePrior extends Distribution {
             Node node = treeInput.get().getNode(nodeNr);
             double branchSpike = spikesInput.get().getValue(nodeNr);
 
-            // Skip the root node — branch leading to the root is not part of the observed tree
+            // skip root node
             if (node.isRoot()) {
+//                GammaDistribution gamma = new GammaDistributionImpl(spikeShape, 1 / spikeShape);
+//                logP += gamma.logDensity(branchSpike);
                 continue;
             }
 
             // Integrate over all possible spike amplitude values
             double expNrHiddenEvents = getExpNrHiddenEventsForBranch(node);
 
-            if (expNrHiddenEvents > 0) {
+            if (expNrHiddenEvents > 0 ) {
 
                 double branchP = 0;
                 int k = 0;
@@ -278,39 +283,7 @@ public class BranchSpikePrior extends Distribution {
         return conds;
     }
 
-//    @Override
-//    public void sample(State state, Random random) {
-//
-//        if (sampledFlag) return;
-//        sampledFlag = true;
-//
-//        // Cause conditional parameters to be sampled
-//        sampleConditions(state, random);
-//
-//        int dimension = treeInput.get().getNodeCount() - 1;
-//        double spikeShape = spikeShapeInput.get().getValue();
-//        spikesInput.get().setDimension(dimension);
-//        Long NrHiddenEvents = 0L;
-//
-//        for (int nodeNr = 0; nodeNr < dimension; nodeNr++) {
-//
-//            Node node = treeInput.get().getNode(nodeNr);
-//            double expNrHiddenEvents = getExpNrHiddenEventsForBranch(node);
-//
-//            NrHiddenEvents = Randomizer.nextPoisson(expNrHiddenEvents);
-//
-//
-//            // Sample spikes from gamma distribution
-//            double alpha = spikeShape * (NrHiddenEvents + 1);
-//            // double beta = 1 / spikeShape;
-//            // Below lambda is 1/beta, so just use spikeShape
-//
-//            double spike = Randomizer.nextGamma(alpha, spikeShape);
-//
-//            spikesInput.get().setValue(nodeNr, spike);
-//
-//        }
-//    }
+
 
     @Override
     public void sample(State state, Random random) {
@@ -365,12 +338,12 @@ public class BranchSpikePrior extends Distribution {
 
     @Override
     protected boolean requiresRecalculation() {
-        return super.requiresRecalculation() ||
-                InputUtil.isDirty(spikesInput) ||
-                InputUtil.isDirty(spikeShapeInput);
+
+        return true;
+//        return super.requiresRecalculation() ||
+//                InputUtil.isDirty(spikesInput) ||
+//                InputUtil.isDirty(spikeShapeInput);
     }
-
-
 
 }
 

@@ -16,7 +16,7 @@ import beast.base.inference.util.InputUtil;
 
 public class PunctuatedClockModel extends BranchRateModel.Base {
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
-    final public Input<Function> spikeMeanInput = new Input<>("spikeMean", "spike scaling hyper-parameter", Input.Validate.REQUIRED);
+    final public Input<Function> spikeMeanInput = new Input<>("spikeMean", "mean parameter for the gamma distribution of each spike", Input.Validate.REQUIRED);
     final public Input<RealParameter> spikesInput = new Input<>("spikes", "spikes associated with each branch on the tree", Input.Validate.REQUIRED);
     final public Input<RealParameter> ratesInput = new Input<>("rates", "rates associated with nodes in the tree for sampling of individual rates among branches", Input.Validate.OPTIONAL);
 
@@ -78,21 +78,25 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     @Override
     protected boolean requiresRecalculation() {
 
-//        return true;
+        return true;
 
-        if (InputUtil.isDirty(spikesInput) || InputUtil.isDirty(meanRateInput) || InputUtil.isDirty(spikeMeanInput)) {
-            return true;
-        }
+//        if (InputUtil.isDirty(spikesInput) || InputUtil.isDirty(meanRateInput) || InputUtil.isDirty(spikeMeanInput)) {
+////            if(InputUtil.isDirty(spikesInput)) System.out.println("spikesInput dirty");
+////            if(InputUtil.isDirty(meanRateInput)) System.out.println("meanRateInput dirty");
+////            if(InputUtil.isDirty(spikeMeanInput)) System.out.println("spikeMeanInput dirty");
+//            return true;
+//        }
+//
+//        if (relaxedInput.get() != null && InputUtil.isDirty(relaxedInput)) {
+//            return true;
+//        }
+//
+//        if (indicatorInput.get() != null && InputUtil.isDirty(indicatorInput)) {
+//            return true;
+//        }
+//
+//        return false;
 
-        if (relaxedInput.get() != null && InputUtil.isDirty(relaxedInput)) {
-            return true;
-        }
-
-        if (indicatorInput.get() != null && InputUtil.isDirty(indicatorInput)) {
-            return true;
-        }
-
-        return false;
     }
 
 }
