@@ -5,12 +5,10 @@ import beast.base.core.Input;
 import beast.base.evolution.branchratemodel.BranchRateModel;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
-//import beast.base.inference.distribution.ParametricDistribution;
 import beast.base.inference.parameter.BooleanParameter;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
 import beast.base.util.Randomizer;
-//import org.apache.commons.math.MathException;
 
 // Based on <GammaSpikeModel>  Copyright (C) <2025>  <Jordan Douglas>
 
@@ -21,8 +19,6 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     final public Input<Function> spikeMeanInput = new Input<>("spikeMean", "mean parameter for each spike", Input.Validate.REQUIRED);
     final public Input<RealParameter> spikesInput = new Input<>("spikes", "spikes associated with each branch on the tree", Input.Validate.REQUIRED);
     final public Input<RealParameter> ratesInput = new Input<>("rates", "rates associated with nodes in the tree for sampling of individual rates among branches", Input.Validate.OPTIONAL);
-//    final public Input<ParametricDistribution> rateDistInput = new Input<>("distr", "the distribution governing the rates among branches. "
-//            + "Must have mean of 1. The clock.rate parameter can be used to change the mean rate", Input.Validate.OPTIONAL);
     final public Input<BooleanParameter> relaxedInput = new Input<>("relaxed", "if false then use strict clock", Input.Validate.OPTIONAL);
     final public Input<BooleanParameter> indicatorInput = new Input<>("indicator", "if false then no spikes are inferred", Input.Validate.OPTIONAL);
     final public Input<Boolean> noSpikeOnDatedTipsInput = new Input<>("noSpikeOnDatedTips", "Set to true if dated tips should have a spike of 0", false);
@@ -43,24 +39,6 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
                 ratesInput.get().setValue(i, val);
             }
         }
-
-        // If provided, initialise rates from the relaxed branch rate distribution itself
-//        ParametricDistribution distribution = rateDistInput.get();
-//        if (distribution != null) {
-//
-//            Double[][] initialRates0 = null;
-//            try {
-//                initialRates0 = distribution.sample(this.nRates);
-//            } catch (MathException e) {
-//                e.printStackTrace();
-//            }
-//            Double [] initialRates = new Double[this.nRates];
-//            for (int i = 0; i < this.nRates; i++) {
-//                initialRates[i] = initialRates0[i][0];
-//            }
-//            RealParameter other = new RealParameter(initialRates);
-//            ratesInput.get().assignFromWithoutID(other);
-//        }
 
     }
 

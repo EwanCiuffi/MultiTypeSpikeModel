@@ -185,9 +185,9 @@ public class BranchSpikePrior extends Distribution {
             if (node.isRoot() || node.isDirectAncestor()) {
                 expectedHiddenEvents.setValue(nodeNr, 0.0);
 
-                // Since spikes on these branches do not affect clock rates,
-                // we still need to assign a value to them to maintain model consistency.
-                // Sample from a Gamma prior as a neutral placeholder for the spike value.
+                // Spikes on these branches do not affect clock rates,
+                // but we still need to assign a value to them to maintain model consistency.
+                // Sample from a Gamma prior as a neutral placeholder for the spike value
                 GammaDistribution gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
                 logP += gamma.logDensity(branchSpike);
 
