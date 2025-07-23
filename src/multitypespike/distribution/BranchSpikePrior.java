@@ -13,6 +13,8 @@ import beast.base.inference.util.InputUtil;
 import beast.base.util.Randomizer;
 import org.apache.commons.math.distribution.GammaDistribution;
 import org.apache.commons.math.distribution.GammaDistributionImpl;
+import org.apache.commons.math.distribution.NormalDistribution;
+import org.apache.commons.math.distribution.NormalDistributionImpl;
 
 import java.util.*;
 
@@ -131,7 +133,7 @@ public class BranchSpikePrior extends Distribution {
 
 
     public double getExpNrHiddenEventsForBranch(Node node) {
-        if (node.isRoot()) return 0;
+        if (node.isRoot() || node.isDirectAncestor()) return 0;
 
         // Forward in time calculation i.e. Time(parentNode) < Time(node)
         double expNrHiddenEvents = 0;
@@ -185,12 +187,6 @@ public class BranchSpikePrior extends Distribution {
             if (node.isRoot() || node.isDirectAncestor()) {
                 expectedHiddenEvents.setValue(nodeNr, 0.0);
 
-                // Spikes on these branches do not affect clock rates,
-                // but we still need to assign a value to them to maintain model consistency.
-                // Sample from a Gamma prior as a neutral placeholder for the spike value
-                GammaDistribution gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
-                logP += gamma.logDensity(branchSpike);
-
                 continue;
             }
 
@@ -211,8 +207,8 @@ public class BranchSpikePrior extends Distribution {
                     double pk = Math.exp(logpk);
                     cumsum += pk;
 
-                    // Number of spikes is k+1 unless node is a sampled ancestor (fake), in which case it's just k
-                    int nSpikes = node.isFake() ? k : k + 1;
+                    // Number of spikes is k+1 unless parent of the node is a sampled ancestor (fake), in which case it's just k
+                    int nSpikes = node.getParent().isFake() ? k : k + 1;
                     double alpha = spikeShape * nSpikes;
 
 
@@ -288,7 +284,7 @@ public class BranchSpikePrior extends Distribution {
 
             Node node = treeInput.get().getNode(nodeNr);
 
-            // Skip root node
+            // Handle origin branch and sampled ancestor branch
             if (node.isRoot() || node.isDirectAncestor()) {
                 spikesInput.get().setValue(nodeNr, 0.0);
                 continue;
