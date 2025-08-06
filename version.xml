@@ -6,11 +6,9 @@
     <service type="beast.base.core.BEASTInterface">
         <provider classname="multitypespike.clockmodel.PunctuatedClockModel"/>
         <provider classname="multitypespike.distribution.BranchSpikePrior"/>
-        <provider classname="multitypespike.distribution.BinomialPrior"/>
         <provider classname="multitypespike.logger.SpikeLogger"/>
         <provider classname="multitypespike.logger.ExpectedHiddenEventsLogger"/>
         <provider classname="multitypespike.logger.SaltativeProportionLogger"/>
-
 
     </service>
 
