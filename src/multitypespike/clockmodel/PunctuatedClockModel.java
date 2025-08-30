@@ -80,6 +80,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     }
 
 
+
     @Override
     public double getRateForBranch(Node node) {
 
