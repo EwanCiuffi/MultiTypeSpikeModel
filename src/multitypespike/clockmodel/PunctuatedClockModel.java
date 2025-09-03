@@ -8,7 +8,6 @@ import beast.base.evolution.tree.Tree;
 import beast.base.inference.parameter.BooleanParameter;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
-import beast.base.util.Randomizer;
 
 // Based on <GammaSpikeModel>  Copyright (C) <2025>  <Jordan Douglas>
 
@@ -74,7 +73,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
         // Root and sampled ancestors have average rate
         double baseRate = meanRateInput.get().getArrayValue();
-        if (node.isRoot() || node.isDirectAncestor()) return baseRate;
+        if (node.getLength() <= 0 || node.isRoot() || node.isDirectAncestor()) return baseRate;
 
 
         double relaxedBranchRate = getRelaxedBranchRate(node);
