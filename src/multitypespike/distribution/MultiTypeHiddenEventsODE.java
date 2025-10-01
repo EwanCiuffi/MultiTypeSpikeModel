@@ -4,9 +4,8 @@ import org.apache.commons.math3.ode.ContinuousOutputModel;
 import org.apache.commons.math3.ode.FirstOrderDifferentialEquations;
 
 
-public class TypedHiddenEventsODE implements FirstOrderDifferentialEquations {
+public class MultiTypeHiddenEventsODE implements FirstOrderDifferentialEquations {
 
-    private final int i;
     private final double lambda_i;
     private final double[][] lambda_ij;
     private final int nTypes;
@@ -15,9 +14,8 @@ public class TypedHiddenEventsODE implements FirstOrderDifferentialEquations {
     private final ContinuousOutputModel[] p0geComArray;
 
 
-    public TypedHiddenEventsODE(int i, int nodeNr, double lambda_i, double[][] lambda_ij,
-                                int nTypes, PiState piState, ContinuousOutputModel[] p0geComArray) {
-        this.i = i;
+    public MultiTypeHiddenEventsODE(int nodeNr, double lambda_i, double[][] lambda_ij,
+                                    int nTypes, PiState piState, ContinuousOutputModel[] p0geComArray) {
         this.lambda_i = lambda_i;
         this.lambda_ij = lambda_ij;
         this.nTypes = nTypes;
@@ -29,7 +27,7 @@ public class TypedHiddenEventsODE implements FirstOrderDifferentialEquations {
 
     @Override
     public int getDimension() {
-        return 1;
+        return this.nTypes;
     }
 
 
@@ -38,30 +36,28 @@ public class TypedHiddenEventsODE implements FirstOrderDifferentialEquations {
     }
 
 
-    public double getP0_i(int nodeNr, double time, int i) {
+    public double[] getP0(int nodeNr, double time) {
         ContinuousOutputModel p0geCom = getP0GeModel(nodeNr);
         p0geCom.setInterpolatedTime(time);
         double[] p0ge = p0geCom.getInterpolatedState();
 
-        return ( p0ge[i] < 0) ? 0.0 :  p0ge[i];
+        return p0ge;
     }
-
 
     @Override
     public void computeDerivatives(double t, double[] y, double[] yDot) {
+        double[] piValues = piState.getPiAtTime(nodeNr, t);
+        double[] p0Values = getP0(nodeNr, t);
 
-        double p0_i = getP0_i(nodeNr, t, i);
-        double pi_i = piState.getPiAtTime(nodeNr, t)[i];
+        for (int i = 0; i < nTypes; i++) {
+            double sum = 2 * lambda_i * p0Values[i];
 
-        double sum = 2 * lambda_i * p0_i;
-
-        for (int j = 0; j < nTypes; j++) {
-            if (j != i) {
-                double p0_j = getP0_i(nodeNr, t, j);
-                sum += lambda_ij[i][j] * p0_j;
+            for (int j = 0; j < nTypes; j++) {
+                if (j != i) {
+                    sum += lambda_ij[i][j] * p0Values[j];
+                }
             }
+            yDot[i] = piValues[i] * sum;
         }
-
-        yDot[0] = pi_i * sum;
     }
 }

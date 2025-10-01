@@ -52,6 +52,7 @@ public class PiSystem implements FirstOrderDifferentialEquations {
         this.piIntegrator = new DormandPrince54Integrator(
                 integrationMinStep, integrationMaxStep,
                 absoluteTolerance, relativeTolerance);
+
     }
 
 
@@ -90,23 +91,21 @@ public class PiSystem implements FirstOrderDifferentialEquations {
         double[] p0ge = getP0Ge(currentNodeNr, t);
 
         for (int i = 0; i< nTypes; i++) {
-
-            yDot[i] = 2 * y[i] * (b[interval][i] * p0ge[i] + M[interval][i][i]);
+            yDot[i] = 0;
 
             for (int j = 0; j < nTypes; j++) {
                 if (j == i) continue;
 
-                yDot[i] += ((b_ij[interval][i][j] * p0ge[i] + M[interval][i][j]) * (p0ge[nTypes + j] / p0ge[nTypes + i])) * y[i];
-                yDot[i] -= ((b_ij[interval][j][i] * p0ge[j] + M[interval][j][i]) * (p0ge[nTypes + i] / p0ge[nTypes + j])) * y[j];
-
+                yDot[i] += ((b_ij[interval][j][i] * p0ge[j] + M[interval][j][i]) * (p0ge[nTypes + i] / p0ge[nTypes + j])) * y[j];
+                yDot[i] -= ((b_ij[interval][i][j] * p0ge[i] + M[interval][i][j]) * (p0ge[nTypes + j] / p0ge[nTypes + i])) * y[i];
             }
         }
     }
 
 
-    public void setInitialConditionsForPi(PiState state, double[] startTypePriorProbs) {
+    public void setInitialConditionsForPi(PiState state, double[] startTypePriorProbs, double rootTime) {
         double total = 0.0;
-        double[] p0geInit = getP0Ge(currentNodeNr,0);
+        double[] p0geInit = getP0Ge(currentNodeNr, rootTime);
 
         for (int type = 0; type < nTypes; type++) {
             state.pi[type] = p0geInit[type + nTypes] * startTypePriorProbs[type];
@@ -138,21 +137,20 @@ public class PiSystem implements FirstOrderDifferentialEquations {
         int thisInterval = parameterization.getIntervalIndex(thisTime);
         int endInterval = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
 
-        while (thisInterval > endInterval) {
+        while (thisInterval < endInterval) {
+            // Forward integration across intervals
+            double nextTime = intervalEndTimes[thisInterval];
 
-            double nextTime = intervalEndTimes[thisInterval-1];
-
-            if (Utils.lessThanWithPrecision(nextTime , thisTime)) {
+            if (Utils.lessThanWithPrecision(thisTime, nextTime)) {
                 setInterval(thisInterval);
                 integrate(state, thisTime, nextTime);
             }
 
             thisTime = nextTime;
-            thisInterval -= 1;
-
+            thisInterval += 1;
         }
 
-        if (Utils.greaterThanWithPrecision(thisTime, tEnd)) {
+        if (Utils.lessThanWithPrecision(thisTime, tEnd)) {
             setInterval(thisInterval);
             integrate(state, thisTime, tEnd);
         }
@@ -166,11 +164,11 @@ public class PiSystem implements FirstOrderDifferentialEquations {
     public void integratePiAtNode(Node node, double parentTime, PiState state,
                                   Parameterization parameterization, double finalSampleOffset) {
 
-        // Get the time of this node (child of parent node)
+        // Get the time of this node
         double nodeTime = parameterization.getNodeTime(node, finalSampleOffset);
 
         // Skip integration on origin and sampled ancestor edges
-        if (!(node.isRoot() || node.isDirectAncestor())) {
+        if (!node.isRoot()) {
             // Determine intervals and integrate from parent to this node
             integratePiAlongEdge(node, parentTime, state, parameterization, finalSampleOffset);
         }
@@ -180,9 +178,17 @@ public class PiSystem implements FirstOrderDifferentialEquations {
             PiState childState = new PiState(nTypes);
             // Copy current state as starting condition for child
             System.arraycopy(state.pi, 0, childState.pi, 0, nTypes);
-
             integratePiAtNode(child, nodeTime, childState, parameterization, finalSampleOffset);
         }
+
+//        if (node.isLeaf()) {
+//            int observedType = ((Number) node.getMetaData("state")).intValue();
+//            System.out.println(" = " + observedType);
+//            for (int i = 0; i < nTypes; i++) {
+//                state.pi[i] = (i == observedType) ? 1.0 : 0.0;
+//            }
+//            return; // No need to recurse further
+//        }
     }
 
 
@@ -191,13 +197,14 @@ public class PiSystem implements FirstOrderDifferentialEquations {
 
         Node root = tree.getRoot();
         setCurrentNodeNr(root.getNr());
+        double rootTime = parameterization.getNodeTime(root, finalSampleOffset);
 
         // Set initial conditions at root
-        setInitialConditionsForPi(state, startTypePriorProbs);
+        setInitialConditionsForPi(state, startTypePriorProbs, rootTime);
 
-        // Start recursive integration from root
-        integratePiAtNode(root, 0, state,
-                parameterization, finalSampleOffset);
+        // Start pre-order traversal integration from root
+        integratePiAtNode(root, rootTime,
+                state, parameterization, finalSampleOffset);
     }
 
 }
