@@ -14,8 +14,7 @@ import beast.base.inference.util.InputUtil;
 import beast.base.util.Randomizer;
 import org.apache.commons.math.distribution.GammaDistribution;
 import org.apache.commons.math.distribution.GammaDistributionImpl;
-import org.apache.commons.math3.ode.FirstOrderIntegrator;
-import org.apache.commons.math3.ode.nonstiff.DormandPrince54Integrator;
+import org.apache.commons.math3.ode.ContinuousOutputModel;
 
 import java.util.*;
 
@@ -57,7 +56,8 @@ public class BranchSpikePrior extends Distribution {
     private double lambda_i, mu_i, psi_i, t_i, A_i, B_i, finalSampleOffset;
     private double[][] lambda_ij;
     public RealParameter expectedHiddenEvents = new RealParameter("0.0");
-    private PiState piState;
+//    private PiState piState;
+    protected ContinuousOutputModel[] piIntegrationResults;
 
 
     @Override
@@ -165,7 +165,7 @@ public class BranchSpikePrior extends Distribution {
 
         if (nodeIndex == parentIndex) return integral_2lambda_i_p_i(t0, T);
 
-        for (int k = parentIndex; k <= nodeIndex - 1; k++) {
+        for (int k = parentIndex; k < nodeIndex; k++) {
             if (k > parentIndex) updateParametersForInterval(k);
             double t1 = intervalEndTimes[k];
             expNrHiddenEvents += integral_2lambda_i_p_i(t0, t1);
@@ -266,87 +266,6 @@ public class BranchSpikePrior extends Distribution {
         return logP;
     }
 
-
-
-
-//    public double typedExpNrHiddenEventsForInterval(int i, int nodeNr, double t0, double t1) {
-//        int nSteps = 20;
-//        double dt = (t1 - t0) / nSteps;
-//        double expNrHiddenEvents = 0.0;
-//
-//        ContinuousOutputModel p0geCom = bdmmInput.get().getCOMs()[nodeNr];
-//
-//        for (int step = 0; step < nSteps; step++) {
-//            double tLeft = t0 + step * dt;
-//            double tRight = tLeft + dt;
-//            double tMid = (tLeft + tRight) / 2.0;
-//
-//            p0geCom.setInterpolatedTime(tMid);
-//            double[] p0 = p0geCom.getInterpolatedState();
-//            double pi_i = piState.getPiAtTime(tMid)[i];
-//
-//            expNrHiddenEvents += 2 * pi_i * lambda_i * p0[i] * dt;
-//
-//            for (int j = 0; j < nTypes; j++) {
-//                if(i==j) continue;
-//                expNrHiddenEvents += pi_i * lambda_ij[i][j] * p0[j] * dt;
-//            }
-//        }
-//
-//        return expNrHiddenEvents;
-//    }
-
-
-    public double[] getMultiTypeExpForInterval(int nodeNr, double t0, double t1) {
-
-        MultiTypeHiddenEventsODE ode = new MultiTypeHiddenEventsODE(nodeNr,
-                lambda_i, lambda_ij, nTypes, piState, bdmDistrInput.get().getIntegrationResults());
-
-        FirstOrderIntegrator integrator = new DormandPrince54Integrator(
-                1e-6,     // min step
-                1.0,      // max step
-                1e-8,    // abs tolerance
-                1e-8     // rel tolerance
-        );
-
-        double[] y = new double[nTypes]; // Initial value 0
-        integrator.integrate(ode, t0, y, t1, y);
-
-        return y;
-    }
-
-    private void addTo(double[] target, double[] source) {
-        for (int i = 0; i < target.length; i++) {
-            target[i] += source[i];
-        }
-    }
-
-    public double[] getMultiTypeExpForBranch(Node node) {
-        if (node.isRoot() || node.isDirectAncestor()) return new double[nTypes];
-
-        double[] expNrHiddenEvents = new double[nTypes];
-        int nodeNr = node.getNr();
-        int nodeIndex = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
-        int parentIndex = parameterization.getNodeIntervalIndex(node.getParent(), finalSampleOffset);
-        double t0 = parameterization.getNodeTime(node.getParent(), finalSampleOffset);
-        double T = parameterization.getNodeTime(node, finalSampleOffset);
-        updateParametersForInterval(parentIndex);
-
-        if (nodeIndex == parentIndex) return getMultiTypeExpForInterval(nodeNr, t0, T);
-
-        for (int k = parentIndex; k <= nodeIndex - 1; k++) {
-            if (k > parentIndex) updateParametersForInterval(k);
-            double t1 = intervalEndTimes[k];
-            addTo(expNrHiddenEvents, getMultiTypeExpForInterval(nodeNr, t0, t1));
-            t0 = t1;
-        }
-
-        updateParametersForInterval(nodeIndex);
-        addTo(expNrHiddenEvents, getMultiTypeExpForInterval(nodeNr, t0, T));
-        return expNrHiddenEvents;
-    }
-
-
 //    private void integratePi(){
 //        this.piState = new PiState(parameterization.getNTypes());
 //        PiSystem piSystem = new PiSystem(
@@ -355,10 +274,20 @@ public class BranchSpikePrior extends Distribution {
 //                bdmDistrInput.get().getIntegrationResults(),
 //                1e-8,
 //                1e-8
-//        );
+//            );
 //        piSystem.integratePi(treeInput.get(), piState, startTypePriorProbsInput.get().getDoubleValues(),
 //        parameterization, finalSampleOffset);
 //    }
+
+    public double[] getMultiTypeExpForBranch(Node node, ContinuousOutputModel piValuesForBranch) {
+        MultiTypeHiddenEventsODEs multiTypeODEs = new MultiTypeHiddenEventsODEs(node.getNr(),
+                parameterization, bdmDistrInput.get().getIntegrationResults(),
+                piValuesForBranch, 1e-8, 1e-8
+                );
+        multiTypeODEs.integrateForBranch(node, parameterization, finalSampleOffset);
+
+        return multiTypeODEs.expNrHiddenEvents;
+    }
 
 
     public double multiTypeCalculateLogP() {
@@ -368,11 +297,15 @@ public class BranchSpikePrior extends Distribution {
         finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
         computeConstants(A, B);
 
+        PiSystem piSystem = new PiSystem(parameterization, treeInput.get(),
+                bdmDistrInput.get().getIntegrationResults(),1e-8, 1e-8 );
+        piSystem.integratePi(startTypePriorProbsInput.get().getDoubleValues(), parameterization, finalSampleOffset);
+
         // Check spikeShape is positive
-        double spikeShape = spikeShapeInput.get().getValue();
-        if (spikeShape <= 0) {
-            return Double.NEGATIVE_INFINITY;
-        }
+        double[] spikeShape = spikeShapeInput.get().getDoubleValues();
+//        if (spikeShape <= 0) { //TODO: Check this
+//            return Double.NEGATIVE_INFINITY;
+//        }
 
         // Loop over all nodes in the tree
         for (int nodeNr = 0; nodeNr < treeInput.get().getNodeCount(); nodeNr++) {
@@ -386,13 +319,13 @@ public class BranchSpikePrior extends Distribution {
                 // Scaled spikes = 0 for origin branch and sampled ancestor branches
                 // Set a pseudo-prior for spikes when they are not included in the model
                 // This facilitates transitions between models of different dimensions
-                GammaDistribution gamma = new GammaDistributionImpl(spikeShape, 1 / spikeShape);
+                GammaDistribution gamma = new GammaDistributionImpl(spikeShape[0], 1 / spikeShape[0]); // TODO: Check this
                 logP += gamma.logDensity(branchSpike);
                 continue;
             }
 
             // Compute expected number of hidden speciation events for this branch
-            double[] expNrHiddenEvents = getMultiTypeExpForBranch(node);
+            double[] expNrHiddenEvents = getMultiTypeExpForBranch(node, piSystem.getIntegrationResultsForNode(node.getNr()));
 //            expectedHiddenEvents.setValue(nodeNr, expNrHiddenEvents); // TODO
 
             // Integrate over all possible spike values
@@ -417,7 +350,7 @@ public class BranchSpikePrior extends Distribution {
                     } else {
                         // Compute log-probability of observed spike under Gamma distribution
                         GammaDistribution gamma = new GammaDistributionImpl(
-                                spikeShape * nSpikes, 1 / spikeShape);
+                                spikeShape[i] * nSpikes, 1 / spikeShape[i]);
                         double gammaLogP = gamma.logDensity(branchSpike);
                         if (branchSpike != 0 && Double.isFinite(gammaLogP)) {
                             branchP += Math.exp(logpk + gammaLogP);

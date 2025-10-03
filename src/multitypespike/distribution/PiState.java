@@ -8,22 +8,26 @@ import org.apache.commons.math3.ode.ContinuousOutputModel;
 public class PiState {
 
     int dimension;
-    public double[] pi;
-    public ContinuousOutputModel[] integrationResults;
+    protected double[] pi;
+    protected ContinuousOutputModel[] integrationResults;
 
     public PiState(int nTypes) {
         dimension = nTypes;
         pi = new double[nTypes];
     }
 
-    public void setIntegrationResults(ContinuousOutputModel[] comArray) {
-        this.integrationResults = comArray;
-    }
+//    public ContinuousOutputModel[] getIntegrationResults() {
+//        return integrationResults;
+//    }
 
-    public double[] getPiAtTime(int nodeNr, double time) {
-        integrationResults[nodeNr].setInterpolatedTime(time);
-        return integrationResults[nodeNr].getInterpolatedState();
-    }
+//    public void setIntegrationResults(ContinuousOutputModel[] comArray) {
+//        this.integrationResults = comArray;
+//    }
+
+//    public double[] getPiAtTime(int nodeNr, double time) {
+//        integrationResults[nodeNr].setInterpolatedTime(time);
+//        return integrationResults[nodeNr].getInterpolatedState();
+//    }
 
     @Override
     public String toString() {
