@@ -1,0 +1,70 @@
+<beast version="2.0"
+       namespace="beast.base.inference
+                 :beast.base.inference.parameter
+                 :beast.base.evolution.tree
+                 :beast.base.evolution.alignment
+                 :feast.simulation
+                 :bdmmprime.distribution
+                 :bdmmprime.parameterization
+                 :bdmmprime.mapping">
+
+    <typedTree spec="TypeMappedTree" id="typedTree" typeLabel="type" remapOnLog="false">
+
+        <parameterization spec="CanonicalParameterization">
+            <processLength spec="RealParameter" id="origin" value="6.0"/>
+            <!-- <tree idref="untypedTree"/> -->
+            <typeSet id="typeSet" spec="TypeSet" typeTraitSet="@typeTraitSet"/>
+            <birthRate spec="SkylineVectorParameter">
+                <skylineValues spec="RealParameter" value="1.2 1.2"/>
+            </birthRate>
+            <deathRate spec="SkylineVectorParameter" typeSet="@typeSet">
+                       <skylineValues spec="RealParameter" value="1.0"/>
+            </deathRate>
+            <migrationRate spec="SkylineMatrixParameter">
+                <skylineValues spec="RealParameter" value="0.1 0.1"/>
+            </migrationRate>
+            <samplingRate spec="SkylineVectorParameter" typeSet="@typeSet">
+                <skylineValues spec="RealParameter" value="0.1"/>
+            </samplingRate>
+            <removalProb spec="SkylineVectorParameter" typeSet="@typeSet">
+                <skylineValues spec="RealParameter" value="1.0"/>
+            </removalProb>
+        </parameterization>
+
+        <startTypePriorProbs spec="RealParameter" value="0.5 0.5"/>
+
+        <typeTraitSet id="typeTraitSet" spec="TraitSet" traitname="type" taxa="@taxonSet">
+            t1=0,t2=0,t3=1,t4=1,t5=0
+        </typeTraitSet>
+
+        <untypedTree id="untypedTree" spec="TreeParser"
+                     adjustTipHeights="false" IsLabelledNewick="true"
+                     newick="(t5:5.7,((t1:1,t2:2):1,(t3:3,t4:4):0.5):1.3):0.0;"/>
+        <taxonset spec="TaxonSet" id="taxonSet">
+            <taxon spec="Taxon" id="t1"/>
+            <taxon spec="Taxon" id="t2"/>
+            <taxon spec="Taxon" id="t3"/>
+            <taxon spec="Taxon" id="t4"/>
+            <taxon spec="Taxon" id="t5"/>
+        </taxonset>
+    </typedTree>
+
+
+    <run spec="GPSimulator" nSims="100000">
+
+        <simulationObject idref="typedTree"/>
+
+<!--        <logger spec="Logger" logEvery="1" mode="tree" fileName="$(filebase).trees">-->
+<!--            <log idref="typedTree"/>-->
+<!--        </logger>-->
+
+        <logger id="nodeTypedTreeLogger" spec="bdmmprime.util.OptionalLogger" enableLogger="true" fileName="$(filebase).trees" logEvery="1" mode="tree">
+            <log id="nodeTypedTree" spec="bdmmprime.mapping.TypedNodeTreeLogger" typedTree="@typedTree"/>
+        </logger>
+
+        <logger spec="Logger" logEvery="1" fileName="$(filebase).log">
+          <log spec="TypedTreeStatsLogger" typedTree="@typedTree" typeLabel="type"
+               typeSet="@typeSet"/>
+        </logger>
+    </run>
+</beast>
