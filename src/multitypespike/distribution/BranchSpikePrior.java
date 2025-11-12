@@ -297,7 +297,6 @@ public class BranchSpikePrior extends Distribution {
                 piValuesForBranch, 1e-8, 1e-8
                 );
         multiTypeODEs.integrateForBranch(node, parameterization, finalSampleOffset);
-
         return multiTypeODEs.getExpectedHiddenEvents();
     }
 
@@ -339,9 +338,15 @@ public class BranchSpikePrior extends Distribution {
                 continue;
             }
 
+            ContinuousOutputModel piCom = piSystem.getIntegrationResultsForNode(node.getNr());
+
             // Compute expected number of hidden speciation events for this branch for all types
-            double[] expNrHiddenEventsArray = getMultiTypeExpForBranch(node, piSystem.getIntegrationResultsForNode(node.getNr()));
+            double[] expNrHiddenEventsArray = getMultiTypeExpForBranch(node, piCom);
             System.arraycopy(expNrHiddenEventsArray, 0, expectedHiddenEvents, nodeNr * nTypes, nTypes);
+
+            // Get pi at time of the observed speciation event of the node
+            piCom.setInterpolatedTime(parameterization.getNodeTime(node.getParent(), finalSampleOffset));
+            double[] piArray = piCom.getInterpolatedState();
 
             // Integrate over all possible spike values
             for (int i = 0; i < nTypes; i++) {
@@ -360,8 +365,8 @@ public class BranchSpikePrior extends Distribution {
                         for (int n = 2; n <= k; n++) logpk -= Math.log(n); // - log(k!)
                         cumsum += Math.exp(logpk);
 
-                        // Number of spikes is k + 1 unless parent of the node is a sampled ancestor (fake), in which case it is k
-                        int nSpikes = node.getParent().isFake() ? k : k + 1;
+                        // Number of spikes is k + π(t₀) unless parent of the node is a sampled ancestor (fake), in which case it is k
+                        double nSpikes = node.getParent().isFake() ? k : k + piArray[i];
 
                         if (nSpikes == 0) {
                             // Valid zero spike
@@ -391,6 +396,7 @@ public class BranchSpikePrior extends Distribution {
 
         return logP;
     }
+
 
     private double getSpikeShape(double[] spikeShapeArray, int type) {
         if (nTypes == 1 || spikeShapeDim == 1) return spikeShapeArray[0];
@@ -518,7 +524,7 @@ public class BranchSpikePrior extends Distribution {
         BranchSpikePrior bsp = new BranchSpikePrior();
         bsp.initByName("parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0 7.0",
+                "spikeShape", "1.0",
                 "spikes", "1.0 0.5",
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density
