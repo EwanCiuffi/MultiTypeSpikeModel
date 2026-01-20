@@ -100,6 +100,12 @@ public class BranchSpikePrior extends Distribution {
             spikesInput.get().setDimension(nodeCount * nTypes);
         }
 
+
+        // Initialise spike values by sampling from the spike prior distribution
+        State state = new State();
+        Random random = new Random(Randomizer.getSeed());
+        this.sample(state, random);
+
         // Ensure spike values are initialised to positive values for root and direct-ancestor branches
         for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
             Node node = treeInput.get().getNode(nodeNr);
@@ -112,8 +118,8 @@ public class BranchSpikePrior extends Distribution {
                 int index = nodeNr * nTypes + i;
                 if (spikesInput.get().getValue(index)==0) spikesInput.get().setValue(index, 0.5);
             }
-
         }
+
     }
 
 
