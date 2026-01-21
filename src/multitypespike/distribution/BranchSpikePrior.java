@@ -58,7 +58,7 @@ public class BranchSpikePrior extends Distribution {
     private Parameterization parameterization;
     private double[] intervalEndTimes, A, B, expectedHiddenEvents, piVals;
     private double lambda_i, mu_i, psi_i, t_i, A_i, B_i, finalSampleOffset;
-    public int nodeCount, nTypes, spikeShapeDim;
+    public int nodeCount, nTypes;
 
     @Override
     public void initAndValidate() {
@@ -78,13 +78,9 @@ public class BranchSpikePrior extends Distribution {
             }
         }
 
-        // Spike shape dimension checks
-        spikeShapeDim = spikeShapeInput.get().getDimension();
-        if (nTypes == 1 && spikeShapeDim > 1) {
-            throw new IllegalArgumentException("Single-type model requires exactly one spikeShape parameter.");
-        }
-        if (nTypes > 1 && spikeShapeDim != 1 && spikeShapeDim != nTypes) {
-            throw new IllegalArgumentException("For multi-type models, 'spikeShape' must have dimension 1 (shared) or nTypes (" + nTypes + ").");
+        // Spike shape dimension check
+        if (spikeShapeInput.get().getDimension() > 1) {
+            throw new IllegalArgumentException( "Expected a single spikeShape parameter, but got dimension " + spikeShapeInput.get().getDimension());
         }
 
         A = new double[parameterization.getTotalIntervalCount()];
@@ -318,11 +314,11 @@ public class BranchSpikePrior extends Distribution {
         logP = 0.0;
         intervalEndTimes = parameterization.getIntervalEndTimes();
         finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
-        double[] spikeShapeArray = spikeShapeInput.get().getDoubleValues();
         GammaDistribution gamma;
 
         // Check spikeShape is positive
-        if (Arrays.stream(spikeShapeArray).anyMatch(x -> x <= 0.0)) {
+        double spikeShape = spikeShapeInput.get().getArrayValue(0);
+        if (spikeShape <= 0) {
             return Double.NEGATIVE_INFINITY;
         }
 
@@ -351,7 +347,6 @@ public class BranchSpikePrior extends Distribution {
                     piVals[nodeNr * nTypes + i] = 0;
 
                     double branchSpike = spikesInput.get().getValue(nodeNr * nTypes + i);
-                    double spikeShape = getSpikeShape(spikeShapeArray, i);
                     gamma = new GammaDistributionImpl(spikeShape, 1 / spikeShape);
                     logP += gamma.logDensity(branchSpike);
                 }
@@ -367,7 +362,6 @@ public class BranchSpikePrior extends Distribution {
             // Integrate over types
             for (int i = 0; i < nTypes; i++) {
                 double branchSpike = spikesInput.get().getValue(nodeNr * nTypes + i);
-                double spikeShape = getSpikeShape(spikeShapeArray, i);
                 double expNrHiddenEvents = expNrHiddenEventsArray[i];
                 double pi = Math.min(Math.max(piArray[i], 0.0), 1.0);
 
@@ -446,11 +440,6 @@ public class BranchSpikePrior extends Distribution {
     }
 
 
-    private double getSpikeShape(double[] spikeShapeArray, int type) {
-        if (nTypes == 1 || spikeShapeDim == 1) return spikeShapeArray[0];
-        else return spikeShapeArray[type];
-    }
-
     @Override
     public List<String> getArguments() {
         List<String> args = new ArrayList<>();
@@ -515,8 +504,12 @@ public class BranchSpikePrior extends Distribution {
             // Call calculate LogP to get p0ge integration results
             bdmDistrInput.get().calculateLogP();
 
-            double[] spikeShapeArray = spikeShapeInput.get().getDoubleValues();
+            double spikeShape = spikeShapeInput.get().getValue();
             spikesInput.get().setDimension(nodeCount * nTypes);
+
+            if (spikeShape <= 0) {
+                throw new IllegalArgumentException("Cannot sample spikes because spikeShape is non-positive " + spikeShape);
+            }
 
             MultiTypeHiddenEventsIntegrator hiddenEventsIntegrator = new MultiTypeHiddenEventsIntegrator(
                     parameterization, treeInput.get(), bdmDistrInput.get().getIntegrationResults(),
@@ -548,7 +541,6 @@ public class BranchSpikePrior extends Distribution {
                 for (int i = 0; i < nTypes; i++) {
 
                     double expNrHiddenEvents = expNrHiddenEventsArray[i];
-                    double spikeShape = getSpikeShape(spikeShapeArray, i);
                     double pi = Math.max(piArray[i], 0.0);
 
                     int obsEvent = (Randomizer.nextDouble() < pi) ? 1 : 0;
@@ -564,7 +556,6 @@ public class BranchSpikePrior extends Distribution {
             }
         }
     }
-
 
     /**
      * Methods for passing expectedNrHiddenEvents, pi values to loggers
