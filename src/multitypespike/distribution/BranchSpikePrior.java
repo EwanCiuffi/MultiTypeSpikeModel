@@ -17,6 +17,9 @@ import org.apache.commons.math.distribution.GammaDistributionImpl;
 import org.apache.commons.math.special.Gamma;
 
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 
 /**
@@ -55,7 +58,12 @@ public class BranchSpikePrior extends Distribution {
             true);
 
     public Input<Boolean> initialiseSpikesInput = new Input<>("initialiseSpikes",
-            "Initialise spike values by sampling from the BranchSpikePrior distribution (default True).",
+            "Initialise spike values by sampling from the BranchSpikePrior distribution (default true).",
+            true);
+
+    public Input<Boolean> parallelizeInput = new Input<>(
+            "parallelize","Whether or not to parallelized the calculation of subtree likelihoods. " +
+                    "(Default true).",
             true);
 
 
@@ -64,6 +72,11 @@ public class BranchSpikePrior extends Distribution {
     private double lambda_i, mu_i, psi_i, t_i, A_i, B_i, finalSampleOffset;
     public int nodeCount, nTypes;
     private boolean spikesInitialised = false;
+    private static boolean isParallelizedCalculation;
+    private static ThreadPoolExecutor pool;
+
+    private double[] weightOfNodeSubTree;
+    public double minimalProportionForParallelization;
 
     @Override
     public void initAndValidate() {
@@ -83,6 +96,9 @@ public class BranchSpikePrior extends Distribution {
             if (bdmDistrInput.get() == null) {
                 throw new IllegalArgumentException("BirthDeathMigrationDistribution,'bdmDistr', must be specified for multi-type analyses.");
             }
+
+            isParallelizedCalculation = parallelizeInput.get();
+            minimalProportionForParallelization = bdmDistrInput.get().minimalProportionForParallelizationInput.get();
         }
 
         // Spike shape dimension check
@@ -94,12 +110,16 @@ public class BranchSpikePrior extends Distribution {
             A = new double[parameterization.getTotalIntervalCount()];
             B = new double[parameterization.getTotalIntervalCount()];
             computeConstants(A, B);
-        }
 
-        if (nTypes == 1) {
             spikesInput.get().setDimension(nodeCount);
+
         } else {
             spikesInput.get().setDimension(nodeCount * nTypes);
+        }
+
+        if (isParallelizedCalculation) {
+            executorBootUp();
+            weightOfNodeSubTree = new double[treeInput.get().getLeafNodeCount() * 2];
         }
 
     }
@@ -109,17 +129,17 @@ public class BranchSpikePrior extends Distribution {
         // Initialise spike values by sampling from the spike prior distribution
         sampleMultiTypeSpikes();
 
-        // Ensure spike values are initialised to positive values for root and direct-ancestor branches
+        // Ensure spike values are initialised to positive values
         for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
-            Node node = treeInput.get().getNode(nodeNr);
-
-            if (!node.isDirectAncestor() && !node.isRoot()) {
-                continue;
-            }
+//            Node node = treeInput.get().getNode(nodeNr);
+//
+//            if (!node.isDirectAncestor() && !node.isRoot()) {
+//                continue;
+//            }
 
             for (int i = 0; i < nTypes; i++) {
                 int index = nodeNr * nTypes + i;
-                if (spikesInput.get().getValue(index) == 0) spikesInput.get().setValue(index, 0.5);
+                if (spikesInput.get().getValue(index) == 0) spikesInput.get().setValue(index, 1e-10);
             }
         }
     }
@@ -336,11 +356,21 @@ public class BranchSpikePrior extends Distribution {
         // Integrate hidden events along each branch of the tree
         MultiTypeHiddenEventsIntegrator hiddenEventsIntegrator = new MultiTypeHiddenEventsIntegrator(
                 parameterization, treeInput.get(), bdmDistrInput.get().getIntegrationResults(),
-                1e-8, 1e-8, false
+                1e-8, 1e-8, false,
+                isParallelizedCalculation, pool, weightOfNodeSubTree, minimalProportionForParallelization
         );
         hiddenEventsIntegrator.integrateHiddenEvents(
                 startTypePriorProbsInput.get().getDoubleValues(), parameterization, finalSampleOffset
         );
+
+//        System.out.println(hiddenEventsIntegrator.storedResults.length);
+
+//        for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
+//            for (int j = 0; j < nTypes; j++) {
+////                System.out.println(hiddenEventsIntegrator.storedResults[nodeNr][nTypes + j]);
+//                System.out.println(hiddenEventsIntegrator.storedResults.length);
+//            }
+//        }
 
         // Loop over all nodes in the tree
         for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
@@ -370,7 +400,6 @@ public class BranchSpikePrior extends Distribution {
             // Compute π at time of the observed speciation event of the node, π(t₀)
             double[] piArray = hiddenEventsIntegrator.getPiAtNode(nodeNr);
 
-            // Integrate over types
             for (int i = 0; i < nTypes; i++) {
                 double branchSpike = spikesInput.get().getValue(nodeNr * nTypes + i);
                 double expNrHiddenEvents = expNrHiddenEventsArray[i];
@@ -437,6 +466,7 @@ public class BranchSpikePrior extends Distribution {
                             }
                         }
                         logP += Math.log(branchP);
+
                     } else if (branchSpike != 0.0) {
                         logP += Double.NEGATIVE_INFINITY;
                     }
@@ -534,7 +564,8 @@ public class BranchSpikePrior extends Distribution {
 
         MultiTypeHiddenEventsIntegrator hiddenEventsIntegrator = new MultiTypeHiddenEventsIntegrator(
                 parameterization, treeInput.get(), bdmDistrInput.get().getIntegrationResults(),
-                1e-8, 1e-8, false
+                1e-8, 1e-8, false, isParallelizedCalculation, pool,
+                weightOfNodeSubTree, minimalProportionForParallelization
         );
         hiddenEventsIntegrator.integrateHiddenEvents(
                 startTypePriorProbsInput.get().getDoubleValues(), parameterization, finalSampleOffset
@@ -594,8 +625,10 @@ public class BranchSpikePrior extends Distribution {
         return piVals[nodeNr * nTypes + type];
     }
 
-
-
+    private static void executorBootUp() {
+        ExecutorService executor = Executors.newCachedThreadPool();
+        pool = (ThreadPoolExecutor) executor;
+    }
 
     @Override
     protected boolean requiresRecalculation() {

@@ -5,42 +5,51 @@ import bdmmprime.util.Utils;
 import beast.base.core.Loggable;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
+import beast.base.evolution.tree.TreeInterface;
 import org.apache.commons.math3.ode.ContinuousOutputModel;
 import org.apache.commons.math3.ode.FirstOrderDifferentialEquations;
 import org.apache.commons.math3.ode.FirstOrderIntegrator;
 import org.apache.commons.math3.ode.nonstiff.DormandPrince54Integrator;
 
 import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 
 
-
-public class MultiTypeHiddenEventsIntegrator implements FirstOrderDifferentialEquations, Loggable {
+public class MultiTypeHiddenEventsIntegrator implements Loggable {
 
     private final ContinuousOutputModel[] p0geComArray;
-
     private final double[][] b;
     private final double[][][] M, b_ij;
 
-    private final double[] state;
-    private final double[][] piAtNodes;
-    private final double[][] expNrHiddenEvents;
+    public final double[][] storedResults;
 
-    public int nTypes, nIntervals;
-    private int currentNodeNr;
+    private final int nTypes;
     public double[] intervalEndTimes;
     private final Tree tree;
-    protected int interval;
 
-    protected FirstOrderIntegrator integrator;
-
-    protected double integrationMinStep, integrationMaxStep;
-    private static final double EPS = 1e-8; // Small value to avoid division by zero
+    protected double integrationMinStep, integrationMaxStep, absoluteTolerance, relativeTolerance;
+    private static final double EPS = 1e-6; // Small value to avoid division by zero
 
     // Optional storage of π continuous output trajectories for testing purposes
     private final boolean storePiTrajectories;
     private final ContinuousOutputModel[] piIntegrationResults;
 
-    public MultiTypeHiddenEventsIntegrator(Parameterization parameterization, Tree tree, ContinuousOutputModel[] p0geComArray, double absoluteTolerance, double relativeTolerance, boolean storePiTrajectories) {
+
+    private final boolean isParallelizedCalculation;
+    private final ThreadPoolExecutor pool;
+    private final double minimalProportionForParallelization;
+    private double parallelizationThreshold;
+
+
+    private final double[] weightOfNodeSubTree;
+
+    public MultiTypeHiddenEventsIntegrator(Parameterization parameterization, Tree tree, ContinuousOutputModel[] p0geComArray,
+                                           double absoluteTolerance, double relativeTolerance, boolean storePiTrajectories,
+                                           boolean isParallelizedCalculation, ThreadPoolExecutor pool, double[] weightOfNodeSubTree, double minimalProportionForParallelization) {
 
         this.tree = tree;
         this.p0geComArray = p0geComArray;
@@ -48,179 +57,146 @@ public class MultiTypeHiddenEventsIntegrator implements FirstOrderDifferentialEq
         this.M = parameterization.getMigRates();
         this.b_ij = parameterization.getCrossBirthRates();
         this.nTypes = parameterization.getNTypes();
-        this.nIntervals = parameterization.getTotalIntervalCount();
+        int nodeCount = tree.getNodeCount();
         this.intervalEndTimes = parameterization.getIntervalEndTimes();
 
-        this.state = new double[2 * nTypes];
-        this.piAtNodes = new double[tree.getNodeCount()][nTypes];
-        this.expNrHiddenEvents = new double[tree.getNodeCount()][nTypes];
+        this.storedResults = new double[nodeCount][2 *nTypes];
 
-        integrationMinStep = parameterization.getTotalProcessLength() * 1e-100;
+        integrationMinStep = parameterization.getTotalProcessLength() * 1e-12;
         integrationMaxStep= parameterization.getTotalProcessLength() / 10;
+        this.absoluteTolerance = absoluteTolerance;
+        this.relativeTolerance = relativeTolerance;
 
         this.storePiTrajectories = storePiTrajectories;
-        this.piIntegrationResults = storePiTrajectories ? new ContinuousOutputModel[tree.getNodeCount()] : null;
+        this.piIntegrationResults = storePiTrajectories ? new ContinuousOutputModel[nodeCount] : null;
 
-        this.integrator = new DormandPrince54Integrator(
-                integrationMinStep, integrationMaxStep,
-                absoluteTolerance, relativeTolerance
-        );
+        this.isParallelizedCalculation = isParallelizedCalculation;
+        this.pool = pool;
+        this.weightOfNodeSubTree = weightOfNodeSubTree;
+        this.minimalProportionForParallelization = minimalProportionForParallelization;
     }
 
-
-    public void setInterval(int interval) {this.interval = interval;}
-
-    @Override
-    public int getDimension() {
-        return 2*this.nTypes;
-    }
-
-    public void setCurrentNodeNr(int nodeNr) {
-        this.currentNodeNr = nodeNr;
-    }
 
     private ContinuousOutputModel getP0GeIntegrationResults(int nodeNr) {
-        return p0geComArray[nodeNr];
-    }
-
+    return p0geComArray[nodeNr];
+}
 
     /**
      * Returns the interpolated p0 and ge values at a given time for an edge.
-     *
-     * @param nodeNr
-     * @param time
-     * @return
      */
     public double[] getP0Ge(int nodeNr, double time) {
         //  p0:  (0 .. dim-1)
         //  ge: (dim .. 2*dim-1)
         ContinuousOutputModel p0geCom = getP0GeIntegrationResults(nodeNr);
         p0geCom.setInterpolatedTime(time);
-        double[] p0geRaw = p0geCom.getInterpolatedState();
-        double[] p0ge = p0geRaw.clone();
+        double[] p0ge = p0geCom.getInterpolatedState();
 
         // Trim away small negative values due to numerical integration errors
-        for (int i=0; i<p0ge.length; i++) {
+        for (int i=0; i < p0ge.length; i++) {
             if (p0ge[i] < 0)
                 p0ge[i] = 0.0;
         }
         return p0ge;
     }
 
+    private final class BranchIntegrator implements FirstOrderDifferentialEquations {
 
-    @Override
-    public void computeDerivatives(double t, double[] y, double[] yDot) {
-        double[] p0ge = getP0Ge(currentNodeNr, t);
+        private final int nodeNr;
+        private final int interval;
 
+        BranchIntegrator(int nodeNr, int interval) {
+            this.nodeNr = nodeNr;
+            this.interval = interval;
+        }
 
-        for (int i = 0; i< nTypes; i++) {
+        @Override
+        public int getDimension() {
+            return 2 * nTypes;
+        }
 
-            /*  π equations (0 .. dim-1)  */
-            yDot[i] = 0;
+        @Override
+        public void computeDerivatives(double t, double[] y, double[] yDot) {
 
-            for (int j = 0; j < nTypes; j++) {
-                if (j == i) continue;
+            double[] p0ge = getP0Ge(nodeNr, t);
 
+            for (int i = 0; i < nTypes; i++) {
 
-                yDot[i] += ((b_ij[interval][j][i] * p0ge[j] + M[interval][j][i]) * (p0ge[nTypes + i] / Math.max(p0ge[nTypes + j], EPS))) * y[j];       // Floor denominator at EPS to avoid division by zero
-                yDot[i] -= ((b_ij[interval][i][j] * p0ge[i] + M[interval][i][j]) * (p0ge[nTypes + j] / Math.max(p0ge[nTypes + i], EPS))) * y[i];
+                final double ge_i = p0ge[nTypes + i];
+                final double p0_i = p0ge[i];
+
+                yDot[i] = 0;
+
+                for (int j = 0; j < nTypes; j++) {
+
+                    if (j == i) continue;
+
+                    final double ge_j = p0ge[nTypes + j];
+                    final double p0_j = p0ge[j];
+
+                    yDot[i] += ((b_ij[interval][j][i] *  p0_j + M[interval][j][i]) * (ge_i
+                            / Math.max(ge_j, EPS))) * y[j];
+
+                    yDot[i] -= ((b_ij[interval][i][j] * p0_i + M[interval][i][j]) * (ge_j
+                            / Math.max(ge_i, EPS))) * y[i];
+                }
+
+                yDot[nTypes + i] = 2.0 * y[i] * b[interval][i] * p0_i;
             }
-
-            /*  Hidden speciation events ((dim .. 2*dim-1) */
-            yDot[nTypes + i] = 2.0 * y[i] * b[interval][i] * p0ge[i];
-        }
-    }
-
-
-    public void setInitialConditionsAtRoot(double[] startTypePriorProbs, double rootTime) {
-        double total = 0.0;
-        double[] p0geInit = getP0Ge(currentNodeNr, rootTime);
-
-        for (int i = 0; i < nTypes; i++) {
-            this.state[i] = p0geInit[i + nTypes] * startTypePriorProbs[i];
-            total += this.state[i];
         }
 
-        for (int i = 0; i < nTypes; i++) {
-            this.state[i] /= total;
-            this.state[nTypes + i] = 0.0;
+        public void integrate(double tStart, double tEnd, double[] state, ContinuousOutputModel segment) {
+
+            FirstOrderIntegrator integrator = threadLocalIntegrator.get();
+
+            integrator.clearStepHandlers();
+
+            if (segment != null) integrator.addStepHandler(segment);
+
+            integrator.integrate(this, tStart, state, tEnd, state);
         }
+
     }
 
-
-    public void setInitialConditionsAtNode(double[] initialPi) {
-        for (int i = 0; i < nTypes; i++) {
-            // π initialisation
-            state[i] = initialPi[i];
-
-            // Reset hidden events to zero at start of each branch
-            state[nTypes + i] = 0.0;
-        }
-    }
-
-    public void storeResultsAtNode(int nodeNr) {
-
-        for (int i = 0; i < nTypes; i++) {
-            // Store π at node
-            piAtNodes[nodeNr][i] = state[i];
-
-            // Store hidden events at node
-            expNrHiddenEvents[nodeNr][i] = state[nTypes + i];
-        }
-    }
-
-
-    public void integrate(double tStart, double tEnd) {
-        integrator.integrate(this, tStart, this.state, tEnd, this.state);
-    }
+    private final ThreadLocal<FirstOrderIntegrator> threadLocalIntegrator =
+        ThreadLocal.withInitial(() ->
+                new DormandPrince54Integrator(integrationMinStep, integrationMaxStep, absoluteTolerance, relativeTolerance)
+    );
 
 
     public void integrateAlongEdge(Node node, double tStart, Parameterization parameterization,
-                                   double finalSampleOffset) {
+                                   double finalSampleOffset, double[] initialState) {
 
-        setCurrentNodeNr(node.getNr());
+        final int nodeNr = node.getNr();
         double thisTime = tStart;
-        double tEnd = parameterization.getNodeTime(node, finalSampleOffset);
-
+        final double tEnd = parameterization.getNodeTime(node, finalSampleOffset);
         int thisInterval = parameterization.getIntervalIndex(thisTime);
-        int endInterval = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
+        final int endInterval = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
+        double[] state = initialState.clone();
 
-        // If storePiTrajectories = false, perform integration without storing π trajectories
-        if (!storePiTrajectories) {
-            while (thisInterval < endInterval) {
-                double nextTime = intervalEndTimes[thisInterval];
-                if (Utils.lessThanWithPrecision(thisTime, nextTime)) {
-                    setInterval(thisInterval);
-                    integrate(thisTime, nextTime);
-                }
-                thisTime = nextTime;
-                thisInterval++;
-            }
-            if (Utils.lessThanWithPrecision(thisTime, tEnd)) {
-                setInterval(thisInterval);
-                integrate(thisTime, tEnd);
-            }
-            storeResultsAtNode(currentNodeNr);
-            return;
-        }
+//        if (storedResults[node.getNr()][0] != 0)
+//            throw new RuntimeException("Branch integrated twice for node " + node.getNr());
 
-        // If storePiTrajectories = true, sotre ContinuousOutputModel for π
-        ContinuousOutputModel fullModel = new ContinuousOutputModel();
+        ContinuousOutputModel fullModel = storePiTrajectories ? new ContinuousOutputModel() : null;
 
         while (thisInterval < endInterval) {
-            double nextTime = intervalEndTimes[thisInterval];
+
+            final double nextTime = intervalEndTimes[thisInterval];
 
             if (Utils.lessThanWithPrecision(thisTime, nextTime)) {
-                // Make a new continuous output model for this interval
-                ContinuousOutputModel segment = new ContinuousOutputModel();
-                integrator.clearStepHandlers();
-                integrator.addStepHandler(segment);
 
-                setInterval(thisInterval);
-                integrate(thisTime, nextTime);
+                BranchIntegrator system = new BranchIntegrator(nodeNr, thisInterval);
 
-                // Append segment to fullModel
-                fullModel.append(segment);
+                if (storePiTrajectories) {
+
+                    ContinuousOutputModel segment = new ContinuousOutputModel();
+
+                    system.integrate(thisTime, nextTime, state, segment);
+
+                    fullModel.append(segment);
+
+                } else {
+                    system.integrate(thisTime, nextTime, state, null);
+                }
             }
 
             thisTime = nextTime;
@@ -228,67 +204,113 @@ public class MultiTypeHiddenEventsIntegrator implements FirstOrderDifferentialEq
         }
 
         if (Utils.lessThanWithPrecision(thisTime, tEnd)) {
-            ContinuousOutputModel segment = new ContinuousOutputModel();
-            integrator.clearStepHandlers();
-            integrator.addStepHandler(segment);
 
-            setInterval(thisInterval);
-            integrate(thisTime, tEnd);
+            BranchIntegrator system = new BranchIntegrator(nodeNr, thisInterval);
 
-            fullModel.append(segment);
+            if (storePiTrajectories) {
+
+                ContinuousOutputModel segment = new ContinuousOutputModel();
+
+                system.integrate(thisTime, tEnd, state, segment);
+
+                fullModel.append(segment);
+
+            } else {
+
+                system.integrate(thisTime, tEnd, state, null);
+            }
         }
 
-        // store both numeric results and the continuous output model if requested
-        storeResultsAtNode(currentNodeNr);
-        if (storePiTrajectories) {
-            piIntegrationResults[currentNodeNr] = fullModel;
-        }
+        storeResultsAtNode(state, nodeNr);
+
+        if (storePiTrajectories)
+            piIntegrationResults[nodeNr] = fullModel;
     }
 
 
-    public void integrateAtNode(Node node, double parentTime, Parameterization parameterization, double finalSampleOffset) {
+    public void integrateAtNode(Node node,
+                                double parentTime,
+                                Parameterization parameterization,
+                                double finalSampleOffset) {
 
-        // Get the time of this node
-        double nodeTime = parameterization.getNodeTime(node, finalSampleOffset);
+        final double nodeTime =
+                parameterization.getNodeTime(node, finalSampleOffset);
 
-        // Skip integration on origin and zero length branches
         if (!node.isRoot() && !node.isDirectAncestor()) {
-            // Determine intervals and integrate from parent to this node
-            integrateAlongEdge(node, parentTime, parameterization, finalSampleOffset);
+            final int parentNr = node.getParent().getNr();
+            double[] state = getInitialConditionsAtNode(parentNr);
+            integrateAlongEdge(node, parentTime, parameterization, finalSampleOffset, state);
         }
 
-        // Recurse to children
-        for (Node child : node.getChildren()) {
+        if (node.isLeaf())
+            return;
 
-            // Set initial conditions
-            setInitialConditionsAtNode(piAtNodes[node.getNr()]);
+        Node child1 = node.getChild(0);
+        Node child2 = node.getChild(1);
 
-            integrateAtNode(child, nodeTime, parameterization, finalSampleOffset);
+        Node firstChild = child1;
+        Node secondChild = child2;
+
+        // Heavier subtree first
+        if (weightOfNodeSubTree[child2.getNr()] >
+                weightOfNodeSubTree[child1.getNr()]) {
+            firstChild = child2;
+            secondChild = child1;
+        }
+
+        Future<?> secondFuture = null;
+
+        // Decide if we parallelise the second child only
+        boolean parallel =
+                isParallelizedCalculation &&
+                        weightOfNodeSubTree[firstChild.getNr()] > parallelizationThreshold &&
+                        weightOfNodeSubTree[secondChild.getNr()] > parallelizationThreshold;
+
+        if (parallel) {
+            final Node second = secondChild;
+            secondFuture = pool.submit(() -> {
+                integrateAtNode(second, nodeTime, parameterization, finalSampleOffset);
+                return null;
+            });
+        }
+
+        // Process first child locally
+        integrateAtNode(firstChild, nodeTime, parameterization, finalSampleOffset);
+
+        // If we didn’t parallelise, do second child now
+        if (!parallel) {
+            integrateAtNode(secondChild, nodeTime, parameterization, finalSampleOffset);
+        } else {
+            try {
+                secondFuture.get();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
     /**
      * Performs recursive integration of π and expected hidden events along the tree.
-     *
-     * @param startTypePriorProbs
-     * @param parameterization
-     * @param finalSampleOffset
      */
     public void integrateHiddenEvents(double[] startTypePriorProbs, Parameterization parameterization, double finalSampleOffset) {
 
         Node root = this.tree.getRoot();
-        setCurrentNodeNr(root.getNr());
+        int rootNr = root.getNr();
+
         double rootTime = parameterization.getNodeTime(root, finalSampleOffset);
 
         // Set initial conditions at root
-        setInitialConditionsAtRoot(startTypePriorProbs, rootTime);
+        double[] state = getInitialConditionsAtRoot(startTypePriorProbs, rootTime, rootNr);
 
         // Store initial conditions at root
-        storeResultsAtNode(currentNodeNr);
+        storeResultsAtNode(state, rootNr);
+
+        updateParallelizationThreshold();
 
         // Start pre-order traversal integration from root
         integrateAtNode(root, rootTime, parameterization, finalSampleOffset);
     }
+
 
     public ContinuousOutputModel getPiIntegrationResultsForNode(int nodeNr) {
         if (!storePiTrajectories) {
@@ -299,33 +321,65 @@ public class MultiTypeHiddenEventsIntegrator implements FirstOrderDifferentialEq
 
     /**
      *  Retrieves the expected number of hidden events per type for a branch
-     *
-     * @param nodeNr
-     * @return
      */
     public double[] getExpNrHiddenEventsForNode(int nodeNr) {
-        return expNrHiddenEvents[nodeNr];
+        double[] expHiddenEvents = new double[nTypes];
+        System.arraycopy(storedResults[nodeNr], nTypes, expHiddenEvents, 0, nTypes);
+        return expHiddenEvents;
     }
 
     /**
      *  Retrieves array of π values at a node
-     *
-     * @param nodeNr
-     * @return
      */
     public double[] getPiAtNode(int nodeNr) {
-        return piAtNodes[nodeNr];
+        double[] pi = new double[nTypes];
+        System.arraycopy(storedResults[nodeNr], 0, pi, 0, nTypes);
+        return pi;
     }
 
+
+    private double[] getInitialConditionsAtRoot(double[] startTypePriorProbs, double rootTime, int rootNr) {
+
+        double[] state = new double[2 * nTypes];
+        double total = 0.0;
+        double[] p0geInit = getP0Ge(rootNr, rootTime);
+
+        for (int i = 0; i < nTypes; i++) {
+            state[i] = p0geInit[i + nTypes] * startTypePriorProbs[i];
+            total += state[i];
+        }
+
+        for (int i = 0; i < nTypes; i++) {
+            state[i] /= total;
+            state[nTypes + i] = 0.0;
+        }
+        return state;
+    }
+
+    public double[] getInitialConditionsAtNode(int nodeNr) {
+        double[] state = new double[2 * nTypes];
+
+        // Copy π from parent
+        System.arraycopy(storedResults[nodeNr], 0, state, 0, nTypes);
+
+        // Hidden events set to zero
+        Arrays.fill(state, nTypes, 2 * nTypes, 0.0);
+
+        return state;
+    }
+
+    private void storeResultsAtNode(double[] state, int nodeNr) {
+        System.arraycopy(state, 0, storedResults[nodeNr], 0, 2 * nTypes);
+    }
+
+
     /**
-     *  Integrates π and hidden events along a single lineage tree (for testing purposes only).
-     *
-     * @param startTypePriorProbs
-     * @param parameterization
-     * @param startTime
-     * @param endTime
+     * Integrates π and hidden events along a single-lineage tree (for testing only).
      */
-    public void integrateSingleLineage(double[] startTypePriorProbs, Parameterization parameterization, double startTime, double endTime) {
+    public void integrateSingleLineage(double[] startTypePriorProbs,
+                                       Parameterization parameterization,
+                                       double startTime,
+                                       double endTime) {
 
         Node root = this.tree.getRoot();
 
@@ -333,30 +387,98 @@ public class MultiTypeHiddenEventsIntegrator implements FirstOrderDifferentialEq
             throw new RuntimeException("Tree has more than one lineage! Only single-lineage trees supported.");
         }
 
-        setCurrentNodeNr(root.getNr());
+        final int rootNr = root.getNr();
 
-        // Set initial conditions at root
-        setInitialConditionsAtRoot(startTypePriorProbs, startTime);
+        // Build initial state vector (2 * nTypes)
+        double[] state = new double[2 * nTypes];
+        double[] p0geInit = getP0Ge(rootNr, startTime);
 
-        ContinuousOutputModel com = new ContinuousOutputModel();
+        double total = 0.0;
+        for (int i = 0; i < nTypes; i++) {
+            state[i] = p0geInit[i + nTypes] * startTypePriorProbs[i];
+            total += state[i];
+        }
+        for (int i = 0; i < nTypes; i++) {
+            state[i] /= total;
+            state[nTypes + i] = 0.0;   // hidden events start at zero
+        }
+
+        // Optional: store continuous π trajectories
+        ContinuousOutputModel com = storePiTrajectories ? new ContinuousOutputModel() : null;
+
         if (storePiTrajectories) {
-            // Optional: store continuous output
+            FirstOrderIntegrator integrator = threadLocalIntegrator.get();
             integrator.clearStepHandlers();
             integrator.addStepHandler(com);
         }
 
-        // Integrate from startTime to endTime
-        integrate(startTime, endTime);
+        // Integrate along the single branch
+        BranchIntegrator system = new BranchIntegrator(rootNr,
+                parameterization.getIntervalIndex(startTime));
+
+        FirstOrderIntegrator integrator = threadLocalIntegrator.get();
+        integrator.integrate(system, startTime, state, endTime, state);
 
         // Store results
-        storeResultsAtNode(root.getNr());
+        storeResultsAtNode(state, rootNr);
 
-        // If you want to keep the full trajectory for testing
         if (storePiTrajectories) {
-            piIntegrationResults[root.getNr()] = com;
+            piIntegrationResults[rootNr] = com;
         }
     }
 
+    /**
+     * Perform an initial traversal of the tree to get the 'weights' (sum of all its edges lengths) of all subtrees
+     * Useful for performing parallelized calculations on the tree.
+     * The weights of the subtrees tell us the depth at which parallelization should stop, so as to not parallelize on subtrees that are too small.
+     * Results are stored in 'weightOfNodeSubTree' array
+     *
+     * @param tree tree whose subtree to compute weights of
+     */
+    private void getAllSubTreesWeights(TreeInterface tree) {
+        Node root = tree.getRoot();
+        double weight = 0;
+        for (final Node child : root.getChildren()) {
+            weight += getSubTreeWeight(child);
+        }
+        weightOfNodeSubTree[root.getNr()] = weight;
+    }
+
+    /**
+     * Perform an initial traversal of the subtree to get its 'weight': sum of all its edges.
+     *
+     * @param node root of subtree
+     * @return weight
+     */
+    private double getSubTreeWeight(Node node) {
+
+        // if leaf, stop recursion, get length of branch above and return
+        if (node.isLeaf()) {
+            weightOfNodeSubTree[node.getNr()] = node.getLength();
+            return node.getLength();
+        }
+
+        // else, iterate over the children of the node
+        double weight = 0;
+        for (final Node child : node.getChildren()) {
+            weight += getSubTreeWeight(child);
+        }
+        // add length of parental branch
+        weight += node.getLength();
+        // store the value
+        weightOfNodeSubTree[node.getNr()] = weight;
+
+        return weight;
+    }
+
+    private void updateParallelizationThreshold() {
+        if (isParallelizedCalculation) {
+            getAllSubTreesWeights(tree);
+            // set 'parallelizationThreshold' to a fraction of the whole tree weight.
+            // The size of this fraction is determined by a tuning parameter. This parameter should be adjusted (increased) if more computation cores are available
+            parallelizationThreshold = weightOfNodeSubTree[tree.getRoot().getNr()] * minimalProportionForParallelization;
+        }
+    }
 
     @Override
     public void init(PrintStream out) {
@@ -369,5 +491,4 @@ public class MultiTypeHiddenEventsIntegrator implements FirstOrderDifferentialEq
     @Override
     public void close(PrintStream out) {
     }
-
 }
