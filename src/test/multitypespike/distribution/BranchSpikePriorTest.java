@@ -19,7 +19,6 @@ import static junit.framework.Assert.assertEquals;
 public class BranchSpikePriorTest {
 
 
-
     @Test
     public void BSPMultiTypeSingleTypeComparisonTest() {
 
@@ -59,7 +58,8 @@ public class BranchSpikePriorTest {
                 "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
                 "startTypePriorProbs", startTypePriorProbs,
                 "useAnalyticalSingleTypeSolution", false,
-                "bdmDistr", density
+                "bdmDistr", density,
+                "initializeSpikes", false
         );
 
         double multiTypeResult = bsp.calculateLogP();
@@ -71,9 +71,9 @@ public class BranchSpikePriorTest {
                 "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
                 "startTypePriorProbs", startTypePriorProbs,
                 "useAnalyticalSingleTypeSolution", true,
-                "bdmDistr", density
+                "bdmDistr", density,
+                "initializeSpikes", false
         );
-//        bsp.initAndValidate();
         double singleTypeResult = bsp.calculateLogP();
 
         double tolerance = 1e-3;
@@ -123,7 +123,8 @@ public class BranchSpikePriorTest {
                 "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
                 "startTypePriorProbs", startTypePriorProbs,
                 "useAnalyticalSingleTypeSolution", false,
-                "bdmDistr", density
+                "bdmDistr", density,
+                "initializeSpikes", false
         );
 
         double multiTypeResult = bsp.calculateLogP();
@@ -135,7 +136,8 @@ public class BranchSpikePriorTest {
                 "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
                 "startTypePriorProbs", startTypePriorProbs,
                 "useAnalyticalSingleTypeSolution", true,
-                "bdmDistr", density
+                "bdmDistr", density,
+                "initializeSpikes", false
         );
         double singleTypeResult = bsp.calculateLogP();
 

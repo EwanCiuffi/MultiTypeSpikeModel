@@ -9,9 +9,8 @@ import multitypespike.distribution.MultiTypeHiddenEventsIntegrator;
 import org.apache.commons.math3.ode.ContinuousOutputModel;
 import org.junit.Test;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 
 import static junit.framework.Assert.assertEquals;
 
@@ -78,15 +77,14 @@ public class MultiTypeHiddenEventsTest {
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
-        ExecutorService executor = Executors.newCachedThreadPool();
-        ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+        Executor pool = ForkJoinPool.commonPool();
 
         double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
         MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                 new MultiTypeHiddenEventsIntegrator(
                         parameterization, tree, p0geResults,
-                        1e-100, 1e-8,
+                        1e-6, 1e-6,
                         false, true, pool, weightOfNodeSubTree,0.1
                 );
 
@@ -169,15 +167,13 @@ public class MultiTypeHiddenEventsTest {
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
-
-        ExecutorService executor = Executors.newCachedThreadPool();
-        ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+        Executor pool = ForkJoinPool.commonPool();
         double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
         MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                 new MultiTypeHiddenEventsIntegrator(
                         parameterization, tree, p0geResults,
-                        1e-100, 1e-8,
+                        1e-6, 1e-6,
                         false, true, pool, weightOfNodeSubTree, 0.1
                 );
 
@@ -259,15 +255,13 @@ public class MultiTypeHiddenEventsTest {
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
-
-        ExecutorService executor = Executors.newCachedThreadPool();
-        ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+        Executor pool = ForkJoinPool.commonPool();
         double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
         MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                 new MultiTypeHiddenEventsIntegrator(
                         parameterization, tree, p0geResults,
-                        1e-100, 1e-8,
+                        1e-6, 1e-6,
                         false, true, pool, weightOfNodeSubTree, 0.1
                 );
 
@@ -349,15 +343,13 @@ public class MultiTypeHiddenEventsTest {
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
-
-        ExecutorService executor = Executors.newCachedThreadPool();
-        ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+        Executor pool = ForkJoinPool.commonPool();
         double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
         MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                 new MultiTypeHiddenEventsIntegrator(
                         parameterization, tree, p0geResults,
-                        1e-100, 1e-8,
+                        1e-6, 1e-6,
                         false, true, pool, weightOfNodeSubTree, 0.1
                 );
 
@@ -439,15 +431,13 @@ public class MultiTypeHiddenEventsTest {
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
-
-        ExecutorService executor = Executors.newCachedThreadPool();
-        ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+        Executor pool = ForkJoinPool.commonPool();
         double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
         MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                 new MultiTypeHiddenEventsIntegrator(
                         parameterization, tree, p0geResults,
-                        1e-100, 1e-8,
+                        1e-6, 1e-6,
                         false, true, pool, weightOfNodeSubTree, 0.1
                 );
 
@@ -505,15 +495,13 @@ public class MultiTypeHiddenEventsTest {
         density.calculateLogP();
         ContinuousOutputModel[] p0geResults = density.getIntegrationResults();
 
-
-        ExecutorService executor = Executors.newCachedThreadPool();
-        ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+        Executor pool = ForkJoinPool.commonPool();
         double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
         MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                 new MultiTypeHiddenEventsIntegrator(
                         parameterization, tree, p0geResults,
-                        1e-100, 1e-8,
+                        1e-6, 1e-6,
                         true  , true, pool, weightOfNodeSubTree, 0.1
                         // Store π trajectories for testing
                 );
@@ -618,14 +606,13 @@ public class MultiTypeHiddenEventsTest {
             int steps = 100;
             double stepSize = branchLength / steps;
 
-            ExecutorService executor = Executors.newCachedThreadPool();
-            ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+            Executor pool = ForkJoinPool.commonPool();
             double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
             MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                     new MultiTypeHiddenEventsIntegrator(
                             parameterization, tree, p0geResults,
-                            1e-100, 1e-8,
+                            1e-6, 1e-6,
                             true, true, pool, weightOfNodeSubTree, 0.1
                     );
 
@@ -717,14 +704,13 @@ public class MultiTypeHiddenEventsTest {
             int steps = 1000;
             double stepSize = branchLength / steps;
 
-            ExecutorService executor = Executors.newCachedThreadPool();
-            ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+            Executor pool = ForkJoinPool.commonPool();
             double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
             MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                     new MultiTypeHiddenEventsIntegrator(
                         parameterization, tree, p0geResults,
-                        1e-100, 1e-8,
+                            1e-6, 1e-6,
                         true, true, pool, weightOfNodeSubTree, 0.1
                     );
 
@@ -819,14 +805,13 @@ public class MultiTypeHiddenEventsTest {
         int steps = 100;
         double stepSize = branchLength / steps;
 
-        ExecutorService executor = Executors.newCachedThreadPool();
-        ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+        Executor pool = ForkJoinPool.commonPool();
         double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
         MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                 new MultiTypeHiddenEventsIntegrator(
                         parameterization, tree, p0geResults,
-                        1e-100, 1e-8,
+                        1e-6, 1e-6,
                         true, true, pool, weightOfNodeSubTree, 0.1
                 );
 
@@ -900,15 +885,13 @@ public class MultiTypeHiddenEventsTest {
         for (int nodeNr = 0; nodeNr <= 1; nodeNr++) {
             Node node = tree.getNode(nodeNr);
 
-
-            ExecutorService executor = Executors.newCachedThreadPool();
-            ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+            Executor pool = ForkJoinPool.commonPool();
             double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
             MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                     new MultiTypeHiddenEventsIntegrator(
                             parameterization, tree, p0geResults,
-                            1e-100, 1e-8,
+                            1e-6, 1e-6,
                             false, true, pool, weightOfNodeSubTree, 0.1
                     );
 
@@ -980,14 +963,13 @@ public class MultiTypeHiddenEventsTest {
         for (int nodeNr = 0; nodeNr <= 1; nodeNr++) {
             Node node = tree.getNode(nodeNr);
 
-            ExecutorService executor = Executors.newCachedThreadPool();
-            ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+            Executor pool = ForkJoinPool.commonPool();
             double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
 
             MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
                     new MultiTypeHiddenEventsIntegrator(
                             parameterization, tree, p0geResults,
-                            1e-100, 1e-8,
+                            1e-6, 1e-6,
                             false, true, pool, weightOfNodeSubTree,
                             0.1
                     );

@@ -17,9 +17,8 @@ import org.apache.commons.math.distribution.GammaDistributionImpl;
 import org.apache.commons.math.special.Gamma;
 
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 
 
 /**
@@ -57,8 +56,8 @@ public class BranchSpikePrior extends Distribution {
             "Use the analytical branch spike prior when the model has only one type.",
             true);
 
-    public Input<Boolean> initialiseSpikesInput = new Input<>("initialiseSpikes",
-            "Initialise spike values by sampling from the BranchSpikePrior distribution (default true).",
+    public Input<Boolean> initializeSpikesInput = new Input<>("initializeSpikes",
+            "Initialize spike values by sampling from the BranchSpikePrior distribution (default true).",
             true);
 
     public Input<Boolean> parallelizeInput = new Input<>(
@@ -66,18 +65,24 @@ public class BranchSpikePrior extends Distribution {
                     "(Default true).",
             true);
 
+    /* If a large number a cores is available (more than 8 or 10) the calculation speed can be increased by diminishing
+    the parallelization factor. On the other hand, if only 2-4 cores are available, a slightly higher value (1/5 to 1/8)
+    can be beneficial to the calculation speed. */
+    public Input<Double> minimalProportionForParallelizationInput = new Input<>(
+            "parallelizationFactor", "The minimal relative size a child subtree must have to start parallel calculations. " +
+                    "Default adapts to available cores: 1/20 (≥16 cores), 1/15 (8-15 cores), 1/10 (4-7 cores), 1/8 (2-3 cores).",
+            getDefaultParallelizationFactor()
+    );
 
     private Parameterization parameterization;
     private double[] intervalEndTimes, A, B, expectedHiddenEvents, piVals, weightOfNodeSubTree;
     private double lambda_i, mu_i, psi_i, t_i, A_i, B_i, finalSampleOffset;
     private boolean spikesInitialised = false;
     private static boolean isParallelizedCalculation;
-    private static ThreadPoolExecutor pool;
+    private Executor pool = null;
 
     public int nodeCount, nTypes;
     public double minimalProportionForParallelization;
-
-    final static double epsilon = 1e-6;
 
 
     @Override
@@ -89,6 +94,7 @@ public class BranchSpikePrior extends Distribution {
         finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
         expectedHiddenEvents = new double[nodeCount * nTypes];
         piVals = new double[nodeCount * nTypes];
+        weightOfNodeSubTree = new double[treeInput.get().getLeafNodeCount() * 2];
 
         if (nTypes != 1) {
             if (startTypePriorProbsInput.get() == null) {
@@ -100,7 +106,7 @@ public class BranchSpikePrior extends Distribution {
             }
 
             isParallelizedCalculation = parallelizeInput.get();
-            minimalProportionForParallelization = bdmDistrInput.get().minimalProportionForParallelizationInput.get();
+            minimalProportionForParallelization = minimalProportionForParallelizationInput.get();
         }
 
         // Spike shape dimension check
@@ -120,10 +126,8 @@ public class BranchSpikePrior extends Distribution {
         }
 
         if (isParallelizedCalculation) {
-            executorBootUp();
-            weightOfNodeSubTree = new double[treeInput.get().getLeafNodeCount() * 2];
+            pool = ForkJoinPool.commonPool();
         }
-
     }
 
     private void initialiseSpikes() {
@@ -239,7 +243,7 @@ public class BranchSpikePrior extends Distribution {
     public double calculateLogP() {
 
         if (!spikesInitialised) {
-            if (initialiseSpikesInput.get()) initialiseSpikes();
+            if (initializeSpikesInput.get()) initialiseSpikes();
             spikesInitialised = true;
         }
 
@@ -358,7 +362,7 @@ public class BranchSpikePrior extends Distribution {
         // Integrate hidden events along each branch of the tree
         MultiTypeHiddenEventsIntegrator hiddenEventsIntegrator = new MultiTypeHiddenEventsIntegrator(
                 parameterization, treeInput.get(), bdmDistrInput.get().getIntegrationResults(),
-                1e-8, 1e-8, false,
+                1e-6, 1e-6, false,
                 isParallelizedCalculation, pool, weightOfNodeSubTree, minimalProportionForParallelization
         );
         hiddenEventsIntegrator.integrateHiddenEvents(
@@ -562,7 +566,7 @@ public class BranchSpikePrior extends Distribution {
 
         MultiTypeHiddenEventsIntegrator hiddenEventsIntegrator = new MultiTypeHiddenEventsIntegrator(
                 parameterization, treeInput.get(), bdmDistrInput.get().getIntegrationResults(),
-                1e-8, 1e-8, false, isParallelizedCalculation, pool,
+                1e-10, 1e-10, false, isParallelizedCalculation, pool,
                 weightOfNodeSubTree, minimalProportionForParallelization
         );
         hiddenEventsIntegrator.integrateHiddenEvents(
@@ -606,6 +610,15 @@ public class BranchSpikePrior extends Distribution {
         }
     }
 
+    private static double getDefaultParallelizationFactor() {
+        int cores = Runtime.getRuntime().availableProcessors();
+
+        if (cores >= 16) return 1.0 / 20;   // 0.05
+        if (cores >= 8)  return 1.0 / 15;   // ~0.067
+        if (cores >= 4)  return 1.0 / 10;   // 0.1
+        return 1.0 / 8;                      // 0.125 for 2 cores
+    }
+
 
     /**
      * Methods for passing precomputed values to loggers
@@ -621,11 +634,6 @@ public class BranchSpikePrior extends Distribution {
 
     public double getPiVals(int nodeNr, int type) {
         return piVals[nodeNr * nTypes + type];
-    }
-
-    private static void executorBootUp() {
-        ExecutorService executor = Executors.newCachedThreadPool();
-        pool = (ThreadPoolExecutor) executor;
     }
 
     @Override

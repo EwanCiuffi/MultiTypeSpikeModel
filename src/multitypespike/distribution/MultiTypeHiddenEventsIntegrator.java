@@ -11,13 +11,11 @@ import org.apache.commons.math3.ode.FirstOrderDifferentialEquations;
 import org.apache.commons.math3.ode.FirstOrderIntegrator;
 import org.apache.commons.math3.ode.nonstiff.DormandPrince54Integrator;
 
-import java.io.PrintStream;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
 
+import java.io.PrintStream;
+import java.util.Arrays;
+import java.util.concurrent.Executor;
+import java.util.concurrent.CompletableFuture;
 
 public class MultiTypeHiddenEventsIntegrator implements Loggable {
 
@@ -25,14 +23,13 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
     private final double[][] b;
     private final double[][][] M, b_ij;
 
-    public final double[][] storedResults;
+    private final double[][] storedResults;
 
     private final int nTypes;
-    public double[] intervalEndTimes;
+    private final double[] intervalEndTimes;
     private final Tree tree;
 
     protected double integrationMinStep, integrationMaxStep, absoluteTolerance, relativeTolerance;
-    private static final double EPS = 1e-6; // Small value to avoid division by zero
 
     // Optional storage of π continuous output trajectories for testing purposes
     private final boolean storePiTrajectories;
@@ -40,16 +37,17 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
 
 
     private final boolean isParallelizedCalculation;
-    private final ThreadPoolExecutor pool;
+    private final Executor pool;
     private final double minimalProportionForParallelization;
     private double parallelizationThreshold;
 
-
     private final double[] weightOfNodeSubTree;
+
 
     public MultiTypeHiddenEventsIntegrator(Parameterization parameterization, Tree tree, ContinuousOutputModel[] p0geComArray,
                                            double absoluteTolerance, double relativeTolerance, boolean storePiTrajectories,
-                                           boolean isParallelizedCalculation, ThreadPoolExecutor pool, double[] weightOfNodeSubTree, double minimalProportionForParallelization) {
+                                           boolean isParallelizedCalculation, Executor pool, double[] weightOfNodeSubTree,
+                                           double minimalProportionForParallelization) {
 
         this.tree = tree;
         this.p0geComArray = p0geComArray;
@@ -76,28 +74,18 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         this.minimalProportionForParallelization = minimalProportionForParallelization;
     }
 
-
-    private ContinuousOutputModel getP0GeIntegrationResults(int nodeNr) {
-    return p0geComArray[nodeNr];
-}
-
     /**
      * Returns the interpolated p0 and ge values at a given time for an edge.
      */
     public double[] getP0Ge(int nodeNr, double time) {
         //  p0:  (0 .. dim-1)
         //  ge: (dim .. 2*dim-1)
-        ContinuousOutputModel p0geCom = getP0GeIntegrationResults(nodeNr);
+        ContinuousOutputModel p0geCom = p0geComArray[nodeNr];
         p0geCom.setInterpolatedTime(time);
-        double[] p0ge = p0geCom.getInterpolatedState();
 
-        // Trim away small negative values due to numerical integration errors
-        for (int i=0; i < p0ge.length; i++) {
-            if (p0ge[i] < 0)
-                p0ge[i] = 0.0;
-        }
-        return p0ge;
+        return p0geCom.getInterpolatedState();
     }
+
 
     private final class BranchIntegrator implements FirstOrderDifferentialEquations {
 
@@ -114,43 +102,70 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
             return 2 * nTypes;
         }
 
+        // Small value to avoid division by zero
+        private static final double EPS = 1e-3;
+
         @Override
         public void computeDerivatives(double t, double[] y, double[] yDot) {
 
             double[] p0ge = getP0Ge(nodeNr, t);
 
-            for (int i = 0; i < nTypes; i++) {
+            // Cache interval arrays
+            final double[] lambda = b[interval];
+            final double[][] lambda_ij = b_ij[interval];
+            final double[][] migRate = M[interval];
 
+            // Precompute inverses
+            double[] inv_ge = new double[nTypes];
+            for (int k = 0; k < nTypes; k++) {
+                inv_ge[k] = 1.0 / Math.max(p0ge[nTypes + k], EPS);
+            }
+
+            Arrays.fill(yDot, 0.0);
+
+            for (int i = 0; i < nTypes; i++) {
                 final double ge_i = p0ge[nTypes + i];
                 final double p0_i = p0ge[i];
 
-                yDot[i] = 0;
+                final double inv_ge_i = inv_ge[i];  // Cache for inner loop
+
+                double dyi = 0;  // Accumulate in local var
 
                 for (int j = 0; j < nTypes; j++) {
-
                     if (j == i) continue;
 
                     final double ge_j = p0ge[nTypes + j];
                     final double p0_j = p0ge[j];
 
-                    yDot[i] += ((b_ij[interval][j][i] *  p0_j + M[interval][j][i]) * (ge_i
-                            / Math.max(ge_j, EPS))) * y[j];
+                    final double ratio_ij = ge_i * inv_ge[j];  // ge_i / ge_j
+                    final double ratio_ji = ge_j * inv_ge_i;   // ge_j / ge_i
 
-                    yDot[i] -= ((b_ij[interval][i][j] * p0_i + M[interval][i][j]) * (ge_j
-                            / Math.max(ge_i, EPS))) * y[i];
+                    // Inflow j -> i
+                    dyi += (lambda_ij[j][i] * p0_j + migRate[j][i]) * ratio_ij * y[j];
+
+                    // Outflow i -> j
+                    dyi -= (lambda_ij[i][j] * p0_i + migRate[i][j]) * ratio_ji * y[i];
                 }
 
-                yDot[nTypes + i] = 2.0 * y[i] * b[interval][i] * p0_i;
+                /*  π equations: (0 .. dim-1)  */
+                yDot[i] = dyi;
+
+                /*  hidden events equations: (dim .. 2*dim-1)  */
+                yDot[nTypes + i] = 2.0 * y[i] * lambda[i] * p0_i;
             }
         }
+
+        private ContinuousOutputModel lastSegment = null;
 
         public void integrate(double tStart, double tEnd, double[] state, ContinuousOutputModel segment) {
 
             FirstOrderIntegrator integrator = threadLocalIntegrator.get();
 
-            integrator.clearStepHandlers();
-
-            if (segment != null) integrator.addStepHandler(segment);
+            if (segment != lastSegment) {
+                integrator.clearStepHandlers();
+                if (segment != null) integrator.addStepHandler(segment);
+                lastSegment = segment;
+            }
 
             integrator.integrate(this, tStart, state, tEnd, state);
         }
@@ -159,7 +174,11 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
 
     private final ThreadLocal<FirstOrderIntegrator> threadLocalIntegrator =
         ThreadLocal.withInitial(() ->
-                new DormandPrince54Integrator(integrationMinStep, integrationMaxStep, absoluteTolerance, relativeTolerance)
+                new DormandPrince54Integrator(
+                        integrationMinStep,
+                        integrationMaxStep,
+                        absoluteTolerance,
+                        relativeTolerance)
     );
 
 
@@ -172,9 +191,6 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         int thisInterval = parameterization.getIntervalIndex(thisTime);
         final int endInterval = parameterization.getNodeIntervalIndex(node, finalSampleOffset);
         double[] state = initialState.clone();
-
-//        if (storedResults[node.getNr()][0] != 0)
-//            throw new RuntimeException("Branch integrated twice for node " + node.getNr());
 
         ContinuousOutputModel fullModel = storePiTrajectories ? new ContinuousOutputModel() : null;
 
@@ -216,7 +232,6 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
                 fullModel.append(segment);
 
             } else {
-
                 system.integrate(thisTime, tEnd, state, null);
             }
         }
@@ -226,7 +241,6 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         if (storePiTrajectories)
             piIntegrationResults[nodeNr] = fullModel;
     }
-
 
     public void integrateAtNode(Node node,
                                 double parentTime,
@@ -258,34 +272,27 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
             secondChild = child1;
         }
 
-        Future<?> secondFuture = null;
-
         // Decide if we parallelise the second child only
         boolean parallel =
                 isParallelizedCalculation &&
                         weightOfNodeSubTree[firstChild.getNr()] > parallelizationThreshold &&
                         weightOfNodeSubTree[secondChild.getNr()] > parallelizationThreshold;
 
-        if (parallel) {
+        if (parallel && pool != null) {
             final Node second = secondChild;
-            secondFuture = pool.submit(() -> {
-                integrateAtNode(second, nodeTime, parameterization, finalSampleOffset);
-                return null;
-            });
-        }
 
-        // Process first child locally
-        integrateAtNode(firstChild, nodeTime, parameterization, finalSampleOffset);
+            // Submit asynchronously with CompletableFuture
+            CompletableFuture<Void> secondFuture = CompletableFuture.runAsync(() ->
+                                    integrateAtNode(second, nodeTime, parameterization, finalSampleOffset), pool);
 
-        // If we didn’t parallelise, do second child now
-        if (!parallel) {
-            integrateAtNode(secondChild, nodeTime, parameterization, finalSampleOffset);
+            // Process first child on current thread
+            integrateAtNode(firstChild, nodeTime, parameterization, finalSampleOffset);
+
+            // Wait for second child (non-blocking join)
+            secondFuture.join();
         } else {
-            try {
-                secondFuture.get();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
+            integrateAtNode(firstChild, nodeTime, parameterization, finalSampleOffset);
+            integrateAtNode(secondChild, nodeTime, parameterization, finalSampleOffset);
         }
     }
 
@@ -475,7 +482,8 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         if (isParallelizedCalculation) {
             getAllSubTreesWeights(tree);
             // set 'parallelizationThreshold' to a fraction of the whole tree weight.
-            // The size of this fraction is determined by a tuning parameter. This parameter should be adjusted (increased) if more computation cores are available
+            // The size of this fraction is determined by a tuning parameter.
+            // This parameter should be adjusted (increased) if more computation cores are available
             parallelizationThreshold = weightOfNodeSubTree[tree.getRoot().getNr()] * minimalProportionForParallelization;
         }
     }
