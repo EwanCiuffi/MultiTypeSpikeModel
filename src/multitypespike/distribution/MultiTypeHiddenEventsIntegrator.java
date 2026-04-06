@@ -35,7 +35,6 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
     private final boolean storePiTrajectories;
     private final ContinuousOutputModel[] piIntegrationResults;
 
-
     private final boolean isParallelizedCalculation;
     private final Executor pool;
     private final double minimalProportionForParallelization;
@@ -91,10 +90,12 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
 
         private final int nodeNr;
         private final int interval;
+        private final double[] inv_ge;
 
         BranchIntegrator(int nodeNr, int interval) {
             this.nodeNr = nodeNr;
             this.interval = interval;
+            this.inv_ge = new double[nTypes];
         }
 
         @Override
@@ -116,7 +117,6 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
             final double[][] migRate = M[interval];
 
             // Precompute inverses
-            double[] inv_ge = new double[nTypes];
             for (int k = 0; k < nTypes; k++) {
                 inv_ge[k] = 1.0 / Math.max(p0ge[nTypes + k], EPS);
             }
@@ -127,9 +127,9 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
                 final double ge_i = p0ge[nTypes + i];
                 final double p0_i = p0ge[i];
 
-                final double inv_ge_i = inv_ge[i];  // Cache for inner loop
+                final double inv_ge_i = inv_ge[i];
 
-                double dyi = 0;  // Accumulate in local var
+                double dyi = 0;
 
                 for (int j = 0; j < nTypes; j++) {
                     if (j == i) continue;
@@ -155,31 +155,21 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
             }
         }
 
-        private ContinuousOutputModel lastSegment = null;
-
         public void integrate(double tStart, double tEnd, double[] state, ContinuousOutputModel segment) {
 
-            FirstOrderIntegrator integrator = threadLocalIntegrator.get();
+            FirstOrderIntegrator integrator =
+                    new DormandPrince54Integrator(
+                            integrationMinStep,
+                            integrationMaxStep,
+                            absoluteTolerance,
+                            relativeTolerance);
 
-            if (segment != lastSegment) {
-                integrator.clearStepHandlers();
-                if (segment != null) integrator.addStepHandler(segment);
-                lastSegment = segment;
-            }
+            if (segment != null) integrator.addStepHandler(segment);
 
             integrator.integrate(this, tStart, state, tEnd, state);
         }
 
     }
-
-    private final ThreadLocal<FirstOrderIntegrator> threadLocalIntegrator =
-        ThreadLocal.withInitial(() ->
-                new DormandPrince54Integrator(
-                        integrationMinStep,
-                        integrationMaxStep,
-                        absoluteTolerance,
-                        relativeTolerance)
-    );
 
 
     public void integrateAlongEdge(Node node, double tStart, Parameterization parameterization,
@@ -256,8 +246,7 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
             integrateAlongEdge(node, parentTime, parameterization, finalSampleOffset, state);
         }
 
-        if (node.isLeaf())
-            return;
+        if (node.isLeaf()) return;
 
         Node child1 = node.getChild(0);
         Node child2 = node.getChild(1);
@@ -379,7 +368,6 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         System.arraycopy(state, 0, storedResults[nodeNr], 0, 2 * nTypes);
     }
 
-
     /**
      * Integrates π and hidden events along a single-lineage tree (for testing only).
      */
@@ -414,8 +402,13 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         ContinuousOutputModel com = storePiTrajectories ? new ContinuousOutputModel() : null;
 
         if (storePiTrajectories) {
-            FirstOrderIntegrator integrator = threadLocalIntegrator.get();
-            integrator.clearStepHandlers();
+            FirstOrderIntegrator integrator =
+                    new DormandPrince54Integrator(
+                            integrationMinStep,
+                            integrationMaxStep,
+                            absoluteTolerance,
+                            relativeTolerance);
+
             integrator.addStepHandler(com);
         }
 
@@ -423,7 +416,13 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         BranchIntegrator system = new BranchIntegrator(rootNr,
                 parameterization.getIntervalIndex(startTime));
 
-        FirstOrderIntegrator integrator = threadLocalIntegrator.get();
+        FirstOrderIntegrator integrator =
+                new DormandPrince54Integrator(
+                        integrationMinStep,
+                        integrationMaxStep,
+                        absoluteTolerance,
+                        relativeTolerance);
+
         integrator.integrate(system, startTime, state, endTime, state);
 
         // Store results

@@ -86,7 +86,7 @@ Type‑specific spike means allow for hypothesis testing:
   *Molecular Biology and Evolution* 42: msaf130  
   https://doi.org/10.1093/molbev/msaf130
 
-- **BEAST 2.7**
+- **BEAST 2.7.7**
 
 ---
 
