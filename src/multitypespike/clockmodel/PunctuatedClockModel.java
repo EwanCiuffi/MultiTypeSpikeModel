@@ -10,9 +10,6 @@ import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
 
 
-/**
- * Based on <GammaSpikeModel>  Copyright (C) <2025>  <Jordan Douglas>
- */
 
 public class PunctuatedClockModel extends BranchRateModel.Base {
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
@@ -25,7 +22,9 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
     public int nTypes, nodeCount;
     int spikeMeanDim;
-    private static final double SPIKE_ZERO_TOL = 1e-8;
+
+    // Threshold for treating a spike as numerically zero
+    private static final double spikeZeroTol = 1e-9;
 
     @Override
     public void initAndValidate() {
@@ -94,7 +93,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         double spikeMean = getSpikeMean(type);
         double branchSpike = spikesInput.get().getValue(node.getNr() * nTypes + type);
 
-        if (branchSpike < SPIKE_ZERO_TOL) return 0;
+        if (branchSpike < spikeZeroTol) return 0;
         else return branchSpike * spikeMean;
     }
 
@@ -125,7 +124,9 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         for (int i = 0; i < nTypes; i++) {
             double spikeMean = getSpikeMean(i);
             double branchSpike = spikesInput.get().getValue(node.getNr() * nTypes + i);
-            spikeSum += branchSpike * spikeMean;
+            if (branchSpike >= spikeZeroTol) {
+                spikeSum += branchSpike * spikeMean;
+            }
         }
         return spikeSum;
     }
