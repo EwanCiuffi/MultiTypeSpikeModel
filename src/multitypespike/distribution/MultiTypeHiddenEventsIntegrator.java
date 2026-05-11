@@ -57,7 +57,7 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
 
         this.storedResults = new double[nodeCount][2 * nTypes];
 
-        integrationMinStep = parameterization.getTotalProcessLength() * 1e-10;
+        integrationMinStep = parameterization.getTotalProcessLength() * 1e-100;
         integrationMaxStep = parameterization.getTotalProcessLength() / 10;
         this.absoluteTolerance = absoluteTolerance;
         this.relativeTolerance = relativeTolerance;

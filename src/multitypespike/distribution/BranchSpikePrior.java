@@ -83,7 +83,7 @@ public class BranchSpikePrior extends Distribution {
     private boolean spikesInitialised = false;
     private static boolean isParallelizedCalculation;
     private Executor pool = null;
-    private boolean hiddenEventsCached = false;
+    private boolean hiddenEventsCached = false, requiresReintegration = true;
     private boolean storedHiddenEventsCached = false;
     private static double relTol, absTol;
     public int nodeCount, nTypes;
@@ -369,13 +369,6 @@ public class BranchSpikePrior extends Distribution {
         if (spikeShape <= 0) {
             return Double.NEGATIVE_INFINITY;
         }
-        boolean requiresReintegration = (!hiddenEventsCached ||
-                InputUtil.isDirty(treeInput) ||
-                InputUtil.isDirty(parameterizationInput) ||
-                InputUtil.isDirty(bdmDistrInput) ||
-                InputUtil.isDirty(startTypePriorProbsInput) ||
-                InputUtil.isDirty(finalSampleOffsetInput)
-        );
 
         if (requiresReintegration) {
             MultiTypeHiddenEventsIntegrator hiddenEventsIntegrator = new MultiTypeHiddenEventsIntegrator(
@@ -668,6 +661,15 @@ public class BranchSpikePrior extends Distribution {
 
     @Override
     protected boolean requiresRecalculation() {
+        // If only spikes and spikeShape are dirty, then no need to reintegrate expNrHiddenEvents
+        requiresReintegration = (!hiddenEventsCached ||
+                InputUtil.isDirty(treeInput) ||
+                InputUtil.isDirty(parameterizationInput) ||
+                InputUtil.isDirty(bdmDistrInput) ||
+                InputUtil.isDirty(startTypePriorProbsInput) ||
+                InputUtil.isDirty(finalSampleOffsetInput)
+        );
+
         return InputUtil.isDirty(spikesInput) ||
                 InputUtil.isDirty(spikeShapeInput) ||
                 InputUtil.isDirty(treeInput) ||
