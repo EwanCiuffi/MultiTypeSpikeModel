@@ -10,23 +10,28 @@ import beast.base.inference.Operator;
 import beast.base.inference.StateNode;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.util.Randomizer;
+import org.apache.commons.math.distribution.GammaDistributionImpl;
 
 @Description("Flips a spike from zero to non zero, or vice versa")
 public class SpikeFlipOperator extends Operator {
 
     final public Input<RealParameter> spikesInput = new Input<>("spikes",
             "spikes associated with each branch", Input.Validate.REQUIRED);
-    final public Input<Double> spikeMeanInput = new Input<>("spikeMean",
-            "mean of the exponential distribution for proposing spikes", 0.005);
+
+    final public Input<RealParameter> spikeShapeInput = new Input<>("spikeShape", "shape parameter for the " +
+            "gamma distribution of the spikes.", Input.Validate.REQUIRED);
+
     final public Input<Parameterization> parameterizationInput = new Input<>("parameterization",
             "BDMM-prime parameterization object (see BDMM-prime package for available parameterizations)",
             Input.Validate.REQUIRED);
+
     final public Input<Boolean> flipAcrossTypesInput = new Input<>("flipAcrossTypes",
             "if true, flip all spikes for a node across types; if false, flip one spike (default false)", false);
 
     private int nTypes;
     private int nodeCount;
     private boolean flipAcrossTypes;
+
 
     @Override
     public void initAndValidate() {
@@ -35,27 +40,12 @@ public class SpikeFlipOperator extends Operator {
         flipAcrossTypes = flipAcrossTypesInput.get();
     }
 
-    /**
-     * Counts how many of the nTypes spikes for a given node are exactly zero.
-     *
-     * @param spikes    the spike parameter vector
-     * @param nodeStart index of the first spike for this node (= nodeIndex * nTypes)
-     * @return number of zero-valued spikes in [nodeStart, nodeStart + nTypes)
-     */
-    private int countZeroSpikes(RealParameter spikes, int nodeStart) {
-        int nZero = 0;
-        for (int i = 0; i < nTypes; i++) {
-            if (spikes.getValue(nodeStart + i) == 0.0) nZero++;
-        }
-        return nZero;
-    }
 
     @Override
     public double proposal() {
 
-        final double spikeMean = spikeMeanInput.get();
-        final double lambda = 1.0 / spikeMean;
         final RealParameter spikes = spikesInput.get();
+        final double spikeShape = spikeShapeInput.get().getValue();
 
         // ---- SINGLE-TYPE: flip one spike chosen uniformly ----
         if (!flipAcrossTypes) {
@@ -64,24 +54,31 @@ public class SpikeFlipOperator extends Operator {
             final double sOld = spikes.getValue(index);
 
             if (sOld == 0.0) {
-                // Birth move: 0 -> Exp(lambda)
+                // Birth move: 0 -> Gamma(spikeShape, 1/spikeShape)
                 // The index-selection probability 1/D cancels in the HR, so we
                 // only need the density ratio.
                 // log HR = log p(rev) - log p(fwd)
-                //        = log(1) - [log(lambda) - lambda * sNew]
-                //        = -(log(lambda) - lambda * sNew)
-                final double sNew = Randomizer.nextExponential(lambda);
+
+                // beta = spikeShape instead of 1/spikeShape due to different parameterisation of the Gamma distribution
+                double sNew = Randomizer.nextGamma(spikeShape, spikeShape);
+
+                // Ensure we don't propose exactly 0 due to precision
+                if (sNew < 1e-9) sNew = 1e-9;
+
                 spikes.setValue(index, sNew);
-                final double logPFwd = Math.log(lambda) - lambda * sNew;
-                return -logPFwd;  // pRev = log(1) = 0
+
+                // logHR = log(pRev) - log(pFwd) = 0 - logDensity(sNew)
+                GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
+                return -gamma.logDensity(sNew);
 
             } else {
-                // Death move: sOld -> 0
-                // log HR = [log(lambda) - lambda * sOld] - log(1)
-                //        = log(lambda) - lambda * sOld
-                final double logPRev = Math.log(lambda) - lambda * sOld;
+                // Death: sOld -> 0
+
                 spikes.setValue(index, 0.0);
-                return logPRev;   // pFwd = log(1) = 0
+
+                // logHR = log(pRev) - log(pFwd) = logDensity(sOld) - 0
+                GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
+                return gamma.logDensity(sOld);
             }
         }
 
@@ -93,15 +90,6 @@ public class SpikeFlipOperator extends Operator {
         // runs alongside this one.  If we were to proceed on a mixed node we
         // would overwrite spikes without a valid reverse path, breaking detailed
         // balance.  The correct response is to reject the move immediately.
-        //
-        // Valid moves and their log Hastings ratios:
-        //
-        //   Birth (all-zero -> all Exp(lambda)):
-        //     log HR = sum_i [ 0 - (log(lambda) - lambda * sNew_i) ]
-        //
-        //   Death (all-nonzero -> all-zero):
-        //     log HR = sum_i [ (log(lambda) - lambda * sOld_i) - 0 ]
-        //
         // The node-selection probability 1/nodeCount cancels in both directions.
 
         final int nodeIndex = Randomizer.nextInt(nodeCount);
@@ -118,24 +106,45 @@ public class SpikeFlipOperator extends Operator {
         double logHR = 0.0;
 
         if (allZero) {
-            // Birth: draw new spike values from Exp(lambda)
+            GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
+
+            // Birth: draw new spike values from Gamma(spikeShape, 1/spikeShape)
             for (int i = 0; i < nTypes; i++) {
-                final double sNew = Randomizer.nextExponential(lambda);
+
+                // beta = spikeShape instead of 1/spikeShape due to different parameterisation of the Gamma distribution
+                double sNew = Randomizer.nextGamma(spikeShape, spikeShape);
+
+                if (sNew < 1e-9) sNew = 1e-9;
                 spikes.setValue(start + i, sNew);
-                final double logPFwd = Math.log(lambda) - lambda * sNew;
-                logHR -= logPFwd;  // pRev term is 0
+                logHR -= gamma.logDensity(sNew);
             }
         } else {
+            GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
+
             // Death: set all spikes to zero
             for (int i = 0; i < nTypes; i++) {
-                final double sOld = spikes.getValue(start + i);
+                double sOld = spikes.getValue(start + i);
                 spikes.setValue(start + i, 0.0);
-                final double logPRev = Math.log(lambda) - lambda * sOld;
-                logHR += logPRev;  // pFwd term is 0
+                logHR += gamma.logDensity(sOld);
             }
         }
 
         return logHR;
+    }
+
+    /**
+     * Counts how many of the nTypes spikes for a given node are exactly zero.
+     *
+     * @param spikes    the spike parameter vector
+     * @param nodeStart index of the first spike for this node (= nodeIndex * nTypes)
+     * @return number of zero-valued spikes in [nodeStart, nodeStart + nTypes)
+     */
+    private int countZeroSpikes(RealParameter spikes, int nodeStart) {
+        int nZero = 0;
+        for (int i = 0; i < nTypes; i++) {
+            if (spikes.getValue(nodeStart + i) == 0.0) nZero++;
+        }
+        return nZero;
     }
 
     @Override

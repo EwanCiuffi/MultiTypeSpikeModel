@@ -146,7 +146,8 @@ public class BranchSpikePrior extends Distribution {
     private void initialiseSpikes() {
 
         // Initialise spike values by sampling from the spike prior distribution
-        sampleMultiTypeSpikes();
+        if (nTypes > 1) sampleMultiTypeSpikes();
+        else
 
         // Ensure spike values are initialised to positive values
         for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
@@ -536,34 +537,7 @@ public class BranchSpikePrior extends Distribution {
         // Single-type case
         if (nTypes == 1) {
 
-            double spikeShape = spikeShapeInput.get().getValue();
-            spikesInput.get().setDimension(nodeCount);
-
-            if (spikeShape <= 0) {
-                throw new IllegalArgumentException("Cannot sample spikes because spikeShape is non-positive " + spikeShape);
-            }
-
-            for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
-
-                Node node = treeInput.get().getNode(nodeNr);
-
-                // Handle origin branch and sampled ancestor branch
-                if (node.isRoot() || node.isDirectAncestor()) {
-                    spikesInput.get().setValue(nodeNr, 0.0);
-                    continue;
-                }
-
-                double expNrHiddenEvents = getExpNrHiddenEventsForBranch(node);
-                int nHiddenEvents = (int) Randomizer.nextPoisson(expNrHiddenEvents);
-                int nSpikes = node.getParent().isFake() ? nHiddenEvents : nHiddenEvents + 1;
-                double alpha = spikeShape * nSpikes;
-
-                // Sample spike from Gamma distribution if nSpikes > 0
-                // Uses spikeShape instead of 1/spikeShape due to different parameterisation of the Gamma distribution
-                double spike = (nSpikes == 0) ? 0.0 : Randomizer.nextGamma(alpha, spikeShape);
-                spikesInput.get().setValue(nodeNr, spike);
-
-            }
+            sampleSingleTypeSpikes();
 
             // Multi-type case
         } else {
@@ -571,12 +545,43 @@ public class BranchSpikePrior extends Distribution {
             // Call calculate LogP to get p0ge integration results
             bdmDistrInput.get().calculateLogP();
 
-            // Sample multi-type spikes
             sampleMultiTypeSpikes();
 
         }
     }
 
+    private void sampleSingleTypeSpikes() {
+
+        double spikeShape = spikeShapeInput.get().getValue();
+        spikesInput.get().setDimension(nodeCount);
+
+        if (spikeShape <= 0) {
+            throw new IllegalArgumentException("Cannot sample spikes because spikeShape is non-positive " + spikeShape);
+        }
+
+        for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
+
+            Node node = treeInput.get().getNode(nodeNr);
+
+            // Handle origin branch and sampled ancestor branch
+            if (node.isRoot() || node.isDirectAncestor()) {
+                spikesInput.get().setValue(nodeNr, 0.0);
+                continue;
+            }
+
+            double expNrHiddenEvents = getExpNrHiddenEventsForBranch(node);
+            int nHiddenEvents = (int) Randomizer.nextPoisson(expNrHiddenEvents);
+            int nSpikes = node.getParent().isFake() ? nHiddenEvents : nHiddenEvents + 1;
+            double alpha = spikeShape * nSpikes;
+
+            // Sample spike from Gamma distribution if nSpikes > 0
+            // Uses spikeShape instead of 1/spikeShape due to different parameterisation of the Gamma distribution
+            double spike = (nSpikes == 0) ? 0.0 : Randomizer.nextGamma(alpha, spikeShape);
+            spikesInput.get().setValue(nodeNr, spike);
+
+        }
+
+    }
 
     private void sampleMultiTypeSpikes() {
 
