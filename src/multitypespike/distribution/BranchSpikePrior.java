@@ -20,7 +20,8 @@ import java.util.concurrent.ForkJoinPool;
 
 
 
-@Description("Prior distribution on the spike size of a branch")
+@Description("Calculates the prior probability of branch spikes, accounting for the expected number of hidden speciation events " +
+        "derived from the birth-death-migration process. It models the total spike size on a branch as a sum of Gamma-distributed events")
 public class BranchSpikePrior extends Distribution {
 
     final public Input<Parameterization> parameterizationInput = new Input<>("parameterization",
@@ -147,7 +148,7 @@ public class BranchSpikePrior extends Distribution {
 
         // Initialise spike values by sampling from the spike prior distribution
         if (nTypes > 1) sampleMultiTypeSpikes();
-        else
+        else sampleSingleTypeSpikes();
 
         // Ensure spike values are initialised to positive values
         for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {

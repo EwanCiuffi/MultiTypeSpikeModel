@@ -7,7 +7,8 @@ import beast.base.evolution.operator.kernel.BactrianScaleOperator;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.util.Randomizer;
 
-@Description("Moves spikes up and corresponding rates down or vice versa")
+@Description("Scales up non-zero spikes on a branch and the corresponding branch rate down or vice versa." +
+        "For multi-type analyses spikes are scaled uniformly across all types")
 public class SpikeUpDownOperator extends BactrianScaleOperator {
 
     final public Input<RealParameter> spikesInput = new Input<>("spikes",
