@@ -108,6 +108,9 @@ public class BranchSpikePrior extends Distribution {
 
         weightOfNodeSubTree = new double[treeInput.get().getLeafNodeCount() * 2];
 
+        relTol = relativeToleranceInput.get();
+        absTol = absoluteToleranceInput.get();
+
         if (nTypes != 1) {
             if (startTypePriorProbsInput.get() == null) {
                 throw new IllegalArgumentException("'startTypePriorProbs' must be specified for multi-type analyses.");
@@ -135,8 +138,6 @@ public class BranchSpikePrior extends Distribution {
 
         } else {
             spikesInput.get().setDimension(nodeCount * nTypes);
-            relTol = relativeToleranceInput.get();
-            absTol = absoluteToleranceInput.get();
         }
 
         if (isParallelizedCalculation) {
@@ -274,7 +275,6 @@ public class BranchSpikePrior extends Distribution {
 
     public double singleTypeCalculateLogP() {
         logP = 0.0;
-
         intervalEndTimes = parameterization.getIntervalEndTimes();
         finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
 
@@ -387,12 +387,15 @@ public class BranchSpikePrior extends Distribution {
                 if (node.isRoot() || node.isDirectAncestor()) {
                     for (int i = 0; i < nTypes; i++) {
                         expectedHiddenEvents[nodeNr * nTypes + i] = 0.0;
-                        piVals[nodeNr * nTypes + i] = 0.0;
+//                        piVals[nodeNr * nTypes + i] = 0.0;
                     }
                     continue;
                 }
                 double[] expHidden = hiddenEventsIntegrator.getExpNrHiddenEventsForNode(nodeNr);
-                double[] pi = hiddenEventsIntegrator.getPiAtNode(nodeNr);
+                // π is evaluated at the parent node: the observed speciation event is at the
+                // start (past-most point) of the branch, which is the parent node.
+                int parentNr = node.getParent().getNr();
+                double[] pi = hiddenEventsIntegrator.getPiAtNode(parentNr);
                 System.arraycopy(expHidden, 0, expectedHiddenEvents, nodeNr * nTypes, nTypes);
                 for (int i = 0; i < nTypes; i++) {
                     piVals[nodeNr * nTypes + i] = Math.min(Math.max(pi[i], 0.0), 1.0);
@@ -419,7 +422,8 @@ public class BranchSpikePrior extends Distribution {
                 continue;
             }
 
-            boolean isFakeParent = node.getParent().isFake();
+            Node parent = node.getParent();
+            boolean isFakeParent = parent.isFake();
 
             for (int i = 0; i < nTypes; i++) {
                 double branchSpike = spikesInput.get().getValue(nodeNr * nTypes + i);
@@ -618,7 +622,9 @@ public class BranchSpikePrior extends Distribution {
             double[] expNrHiddenEventsArray = hiddenEventsIntegrator.getExpNrHiddenEventsForNode(nodeNr);
 
             // Compute π at time of the observed speciation event of the node, π(t₀)
-            double[] piArray = hiddenEventsIntegrator.getPiAtNode(nodeNr);
+            Node parent = node.getParent();
+            int parentNr = parent.getNr();
+            double[] piArray = hiddenEventsIntegrator.getPiAtNode(parentNr);
 
 
             for (int i = 0; i < nTypes; i++) {
