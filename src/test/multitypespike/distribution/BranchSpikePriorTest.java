@@ -9,8 +9,10 @@ import beast.base.evolution.tree.coalescent.ConstantPopulation;
 import beast.base.evolution.tree.coalescent.RandomTree;
 import beast.base.inference.parameter.RealParameter;
 import multitypespike.distribution.BranchSpikePrior;
+import org.apache.commons.math.distribution.GammaDistributionImpl;
 import org.junit.Test;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -59,10 +61,11 @@ public class BranchSpikePriorTest {
                 "startTypePriorProbs", startTypePriorProbs,
                 "useAnalyticalSingleTypeSolution", false,
                 "bdmDistr", density,
-                "initializeSpikes", false
+                "initializeSpikes", false,
+                "parallelize", false
         );
 
-        double multiTypeResult = bsp.calculateLogP();
+        System.out.println("Before multiTypeResult"); double multiTypeResult = bsp.calculateLogP(); System.out.println("After multiTypeResult");
 
         bsp.initByName(
                 "parameterization", parameterization,
@@ -127,7 +130,7 @@ public class BranchSpikePriorTest {
                 "initializeSpikes", false
         );
 
-        double multiTypeResult = bsp.calculateLogP();
+        System.out.println("Before multiTypeResult"); double multiTypeResult = bsp.calculateLogP(); System.out.println("After multiTypeResult");
 
         bsp.initByName(
                 "parameterization", parameterization,
@@ -334,64 +337,160 @@ public class BranchSpikePriorTest {
         }
     }
 
+    /**
+     * Test to validate the calculation of the single-type branch spike density.
+     * We override getExpNrHiddenEventsForBranch to condition on known expected hidden events,
+     * allowing direct comparison against exact values calculated in R.
+     */
+    @Test
+    public void exactSingleTypeDensityTest() throws Exception {
+        // Simple 2-taxon tree
+        String newick = "(t1:1.0, t2:1.0);";
+        Tree tree = new TreeParser(newick, false, false, true, 0);
+
+        BranchSpikePrior bsp = new BranchSpikePrior() {
+            @Override
+            public double getExpNrHiddenEventsForBranch(Node node) {
+                // Hardcode expectations
+                if (node.getNr() == 0) return 0.5; // t1
+                if (node.getNr() == 1) return 1.2; // t2
+                return 0.0; // root/internal nodes
+            }
+        };
+
+        // Because we overrode getExpNrHiddenEventsForBranch, the actual rates here do not matter.
+        Parameterization param = new CanonicalParameterization();
+        param.initByName("processLength", new RealParameter("2.0"),
+                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0"), 1),
+                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0"), 1),
+                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5"), 1),
+                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 1)
+        );
 
 
+        // Initialise the prior
+        bsp.initByName(
+                "parameterization", param,
+                "tree", tree,
+                "spikeShape", "2.0",
+                "spikes", "0.8 2.5 0.5", // 0.8 for node 0, 2.5 for node 1, 0.5 for root (pseudo-prior)
+                "initializeSpikes", false
+        );
 
-//    public static void main(String[] args) {
-//
-//        String newick = "((0:1.0,1:1.0)4:1.0,(2:1.0,3:1.0)5:0.5)6:0.0;";
-//        TreeParser treeParser = new TreeParser(newick, false, false, false, 0);
-//        Tree tree = treeParser;
-//
-//        RealParameter originParam = new RealParameter("2.0");
-//
-//        Parameterization parameterization = new CanonicalParameterization();
-//        parameterization.initByName(
-//                "typeSet", new TypeSet(1),
-//                "processLength", originParam,
-//                "birthRate", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("0.75"), 1),
-//                "deathRate", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("0.3"), 1),
-//                "samplingRate", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("0.1"), 1),
-//                "removalProb", new SkylineVectorParameter(
-//                        null,
-//                        new RealParameter("0"), 1),
-//                "rhoSampling", new TimedParameter(
-//                        originParam,
-//                        new RealParameter("1.0"))
-//        );
-//
-//        Node node = tree.getNode(5);
-//        BranchSpikePrior bsp = new BranchSpikePrior();
-//        bsp.initByName("parameterization", parameterization, "tree", tree, "spikeShape", "1.0", "spikes", "1.0 0.5 0.1 0.2 0.7 0.1");
-//        System.out.println(bsp.getExpNrHiddenEventsForBranch(node));
-//        System.out.println(bsp.calculateLogP());
+        double logP = bsp.calculateLogP();
 
-//        System.out.println(parameterization.getNodeTime(node,0));
-//        System.out.println(parameterization.getNodeTime(node.getParent(),0));
-//
-//        System.out.println(node.getParent().getHeight());
-//        System.out.println(node.getHeight());
+        // This expected value comes directly from the total_logP output of generate_true_logdensity.R
+        double expectedLogP = -2.56800013;
 
+        double tolerance = 1e-5;
+        assertEquals("logP does not match exact R calculation.",
+                expectedLogP, logP, tolerance);
+    }
 
+    /**
+     * Test to validate the calculation of the multi-type branch spike density.
+     * We use Java Reflection to bypass the multi-type numerical integrator,
+     * injecting known expected hidden events and pi values, allowing direct
+     * comparison against exact values calculated in R.
+     */
+    @Test
+    public void exactMultiTypeDensityTest() throws Exception {
+        // Simple 2-taxon tree
+        String newick = "(t1[&state=0]:1.0, t2[&state=1]:1.0);";
+        Tree tree = new TreeParser(newick, false, false, true, 0);
 
-//        Stubs stub = new Stubs();
-//        gammaspike.distribution.BranchSpikePrior gamma_bsp = new gammaspike.distribution.BranchSpikePrior();
-//        StumpedTreePrior stp = new StumpedTreePrior();
-//        stp.initByName("lambda", "0.75", "r0", "2.5", "samplingProportion", "0.25", "tree", tree);
-//        stub.initByName("tree", tree, "prior", stp);
-//        gamma_bsp.initByName("spikes", "1.0 0.5 0.1 0.2 0.7 0.1", "shape", "1.0", "stubs", stub, "tree", tree);
-//        System.out.println(stp.getMeanStubNumber(node.getHeight(), node.getParent().getHeight()));
-//        System.out.println(gamma_bsp.calculateLogP());
+        BranchSpikePrior bsp = new BranchSpikePrior();
 
+        // Parameterization for 2 types
+        Parameterization param = new CanonicalParameterization();
+        param.initByName(
+                "typeSet", new TypeSet(2),
+                "processLength", new RealParameter("2.0"),
+                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0 2.0"), 2),
+                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0 1.0"), 2),
+                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5 0.5"), 2),
+                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0 0.0"), 2)
+        );
 
-//}
+        // Dummy BDM distribution to satisfy initAndValidate() requirements
+        BirthDeathMigrationDistribution bdm = new BirthDeathMigrationDistribution();
+        bdm.initByName("parameterization", param, "tree", tree, "typeLabel", "state",
+                "startTypePriorProbs", new RealParameter("0.5 0.5"));
 
+        // Initialise the prior
+        bsp.initByName(
+                "parameterization", param,
+                "tree", tree,
+                "bdmDistr", bdm,
+                "startTypePriorProbs", new RealParameter("0.5 0.5"),
+                "spikeShape", "2.0",
+                // Spikes dimension = 3 nodes * 2 types = 6 values
+                // Node0_Type0, Node0_Type1, Node1_Type0, Node1_Type1, Root_Type0, Root_Type1
+                "spikes", "0.8 0.3 2.5 1.1 0.5 0.5",
+                "initializeSpikes", false,
+                "useAnalyticalSingleTypeSolution", false // Force multi-type execution
+        );
+
+        // Force the recalculation flag to false so the integrator is completely skipped
+        Field reqReintField = BranchSpikePrior.class.getDeclaredField("requiresReintegration");
+        reqReintField.setAccessible(true);
+        reqReintField.set(bsp, false);
+
+        // Inject expected hidden events
+        Field expHiddenEventsField = BranchSpikePrior.class.getDeclaredField("expectedHiddenEvents");
+        expHiddenEventsField.setAccessible(true);
+        double[] expHidden = (double[]) expHiddenEventsField.get(bsp);
+
+        // Node 0 (t1)
+        expHidden[0] = 0.5; // Type 0
+        expHidden[1] = 0.2; // Type 1
+        // Node 1 (t2)
+        expHidden[2] = 1.2; // Type 0
+        expHidden[3] = 0.9; // Type 1
+        // Node 2 (Root) stays 0.0
+
+        // Inject pi values
+        Field piValsField = BranchSpikePrior.class.getDeclaredField("piVals");
+        piValsField.setAccessible(true);
+        double[] piVals = (double[]) piValsField.get(bsp);
+
+        // Node 0 (t1)
+        piVals[0] = 0.8; // Type 0
+        piVals[1] = 0.6; // Type 1
+        // Node 1 (t2)
+        piVals[2] = 0.7; // Type 0
+        piVals[3] = 0.4; // Type 1
+        // Node 2 (Root) stays 0.0
+
+        double logP = bsp.calculateLogP();
+
+        // This expected value comes directly from the total_logP output of generate_true_multitype_logdensity.R
+        double expectedLogP = -5.35539621;
+
+        double tolerance = 1e-5;
+        assertEquals("Multi-type logP does not match exact R calculation.",
+                expectedLogP, logP, tolerance);
+    }
+
+    @Test
+    public void testGammaReuseEquivalence() {
+        double spikeShape = 2.5;
+        double branchSpike = 1.23;
+        int nSpikes = 3;
+
+        // new object each time
+        GammaDistributionImpl original = new GammaDistributionImpl(spikeShape * nSpikes, 1.0 / spikeShape);
+        double logPOriginal = original.logDensity(branchSpike);
+
+        // reuse mutated object
+        GammaDistributionImpl reused = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
+        reused.setAlpha(spikeShape * nSpikes);
+        reused.setBeta(1.0 / spikeShape);
+        double logPReused = reused.logDensity(branchSpike);
+
+        // Should match within numerical tolerance
+        assertEquals(logPOriginal, logPReused, 1e-16);
+    }
 
 }
 

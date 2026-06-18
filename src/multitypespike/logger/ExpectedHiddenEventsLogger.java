@@ -10,9 +10,6 @@ import multitypespike.distribution.BranchSpikePrior;
 
 import java.io.PrintStream;
 
-/**
- * Based on <GammaSpikeModel>  Copyright (C) <2025>  <Jordan Douglas>
- */
 
 @Description("Logs the expected number of hidden speciation events per branch")
 public class ExpectedHiddenEventsLogger extends CalculationNode implements Function, Loggable {
@@ -81,6 +78,10 @@ public class ExpectedHiddenEventsLogger extends CalculationNode implements Funct
                 out.print(id + ".node" + nodeNr + "\t");
             }
         }
+    }
+
+    public int getNTypes() {
+        return nTypes;
     }
 
     @Override

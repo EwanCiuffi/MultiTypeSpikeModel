@@ -10,6 +10,8 @@
         <provider classname="multitypespike.logger.ExpectedHiddenEventsLogger"/>
         <provider classname="multitypespike.logger.HiddenEventsLogger"/>
         <provider classname="multitypespike.logger.SaltativeProportionLogger"/>
+        <provider classname="multitypespike.logger.BranchTypeProbabilityLogger"/>
+        <provider classname="multitypespike.logger.MultiTypeTreeLogger"/>
         <provider classname="multitypespike.operator.SpikeFlipOperator"/>
         <provider classname="multitypespike.operator.SpikeUpDownOperator"/>
 

@@ -350,7 +350,8 @@ public class MultiTypeHiddenEventsTest {
                 new MultiTypeHiddenEventsIntegrator(
                         parameterization, tree, p0geResults,
                         1e-6, 1e-6,
-                        false, true, pool, weightOfNodeSubTree, 0.1
+                        false, true, pool,
+                        weightOfNodeSubTree, 0.1
                 );
 
         multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getDoubleValues(), parameterization,0.0, 1.0);
@@ -603,7 +604,7 @@ public class MultiTypeHiddenEventsTest {
             double nodeTime = parameterization.getNodeTime(node, 0);
             double parentTime = parameterization.getNodeTime(node.getParent(), 0);
             double branchLength = nodeTime - parentTime;
-            int steps = 100;
+            int steps = 200;
             double stepSize = branchLength / steps;
 
             Executor pool = ForkJoinPool.commonPool();
@@ -701,7 +702,7 @@ public class MultiTypeHiddenEventsTest {
             double nodeTime = parameterization.getNodeTime(node, 0);
             double parentTime = parameterization.getNodeTime(node.getParent(), 0);
             double branchLength = nodeTime - parentTime;
-            int steps = 1000;
+            int steps = 2000;
             double stepSize = branchLength / steps;
 
             Executor pool = ForkJoinPool.commonPool();
@@ -802,7 +803,7 @@ public class MultiTypeHiddenEventsTest {
         double nodeTime = parameterization.getNodeTime(node, 0);
         double parentTime = parameterization.getNodeTime(node.getParent(), 0);
         double branchLength = nodeTime - parentTime;
-        int steps = 100;
+        int steps = 200;
         double stepSize = branchLength / steps;
 
         Executor pool = ForkJoinPool.commonPool();

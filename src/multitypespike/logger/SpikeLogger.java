@@ -19,7 +19,7 @@ public class SpikeLogger extends CalculationNode implements Function, Loggable {
             "logPerType","If true, log spikes of each type separately for multi-type models; " +
             "if false, log totals per node (sum across types).",false); // default: sum across types
 
-    int nTypes, nodeCount;
+    private int nTypes, nodeCount;
     private boolean logPerType;
 
     @Override
@@ -76,6 +76,10 @@ public class SpikeLogger extends CalculationNode implements Function, Loggable {
         for (int i = 0; i < this.getDimension(); i ++) {
             out.print(this.getArrayValue(i) + "\t");
         }
+    }
+
+    public int getNTypes() {
+        return nTypes;
     }
 
     @Override

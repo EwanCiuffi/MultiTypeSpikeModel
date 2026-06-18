@@ -38,6 +38,14 @@ public class SpikeFlipOperator extends Operator {
         nTypes = parameterizationInput.get().getNTypes();
         nodeCount = spikesInput.get().getDimension() / nTypes;
         flipAcrossTypes = flipAcrossTypesInput.get();
+
+        int spikeShapeDim = spikeShapeInput.get().getDimension();
+        if (nTypes == 1 && spikeShapeDim > 1) {
+            throw new IllegalArgumentException("Single-type model requires exactly one spikeShape parameter.");
+        }
+        if (nTypes > 1 && spikeShapeDim != 1 && spikeShapeDim != nTypes) {
+            throw new IllegalArgumentException("For multi-type models, 'spikeShape' must have dimension 1 (shared) or nTypes (" + nTypes + ").");
+        }
     }
 
 
@@ -45,12 +53,13 @@ public class SpikeFlipOperator extends Operator {
     public double proposal() {
 
         final RealParameter spikes = spikesInput.get();
-        final double spikeShape = spikeShapeInput.get().getValue();
 
         // ---- SINGLE-TYPE: flip one spike chosen uniformly ----
         if (!flipAcrossTypes) {
 
             final int index = Randomizer.nextInt(spikes.getDimension());
+            final int type = index % nTypes;
+            final double spikeShape = getSpikeShape(type);
             final double sOld = spikes.getValue(index);
 
             if (sOld == 0.0) {
@@ -106,10 +115,10 @@ public class SpikeFlipOperator extends Operator {
         double logHR = 0.0;
 
         if (allZero) {
-            GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
-
             // Birth: draw new spike values from Gamma(spikeShape, 1/spikeShape)
             for (int i = 0; i < nTypes; i++) {
+                double spikeShape = getSpikeShape(i);
+                GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
 
                 // beta = spikeShape instead of 1/spikeShape due to different parameterisation of the Gamma distribution
                 double sNew = Randomizer.nextGamma(spikeShape, spikeShape);
@@ -119,10 +128,10 @@ public class SpikeFlipOperator extends Operator {
                 logHR -= gamma.logDensity(sNew);
             }
         } else {
-            GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
-
             // Death: set all spikes to zero
             for (int i = 0; i < nTypes; i++) {
+                double spikeShape = getSpikeShape(i);
+                GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
                 double sOld = spikes.getValue(start + i);
                 spikes.setValue(start + i, 0.0);
                 logHR += gamma.logDensity(sOld);
@@ -152,5 +161,11 @@ public class SpikeFlipOperator extends Operator {
         final List<StateNode> list = new ArrayList<>();
         list.add(spikesInput.get());
         return list;
+    }
+
+    public double getSpikeShape(int type) {
+        int spikeShapeDim = spikeShapeInput.get().getDimension();
+        if (nTypes == 1 || spikeShapeDim == 1) return spikeShapeInput.get().getArrayValue(0);
+        else return spikeShapeInput.get().getArrayValue(type);
     }
 }

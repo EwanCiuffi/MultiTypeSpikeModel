@@ -13,6 +13,7 @@ import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
 import beast.base.util.Randomizer;
 import org.apache.commons.math.distribution.GammaDistributionImpl;
+import org.apache.commons.math3.exception.MaxCountExceededException;
 
 import java.util.*;
 import java.util.concurrent.Executor;
@@ -65,7 +66,7 @@ public class BranchSpikePrior extends Distribution {
 
     public Input<Boolean> parallelizeInput = new Input<>(
             "parallelize","Whether or not to parallelized the calculation of subtree likelihoods. " +
-                    "(Default true).",
+            "(Default true).",
             true);
 
     /* If a large number a cores is available (more than 8 or 10) the calculation speed can be increased by diminishing
@@ -73,7 +74,7 @@ public class BranchSpikePrior extends Distribution {
     can be beneficial to the calculation speed. */
     public Input<Double> minimalProportionForParallelizationInput = new Input<>(
             "parallelizationFactor", "The minimal relative size a child subtree must have to start parallel calculations. " +
-                    "Default adapts to available cores: 1/20 (≥16 cores), 1/15 (8-15 cores), 1/10 (4-7 cores), 1/8 (2-3 cores).",
+            "Default adapts to available cores: 1/20 (≥16 cores), 1/15 (8-15 cores), 1/10 (4-7 cores), 1/8 (2-3 cores).",
             getDefaultParallelizationFactor()
     );
 
@@ -125,8 +126,12 @@ public class BranchSpikePrior extends Distribution {
         }
 
         // Spike shape dimension check
-        if (spikeShapeInput.get().getDimension() > 1) {
-            throw new IllegalArgumentException("Expected a single spikeShape parameter, but got dimension " + spikeShapeInput.get().getDimension());
+        int spikeShapeDim = spikeShapeInput.get().getDimension();
+        if (nTypes == 1 && spikeShapeDim > 1) {
+            throw new IllegalArgumentException("Single-type model requires exactly one spikeShape parameter.");
+        }
+        if (nTypes > 1 && spikeShapeDim != 1 && spikeShapeDim != nTypes) {
+            throw new IllegalArgumentException("For multi-type models, 'spikeShape' must have dimension 1 (shared) or nTypes (" + nTypes + ").");
         }
 
         if (nTypes == 1) {
@@ -142,6 +147,16 @@ public class BranchSpikePrior extends Distribution {
 
         if (isParallelizedCalculation) {
             pool = ForkJoinPool.commonPool();
+        }
+
+        if (!initializeSpikesInput.get()) {
+            // Ensure spike values are initialised to positive values
+            for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
+                for (int i = 0; i < nTypes; i++) {
+                    int index = nodeNr * nTypes + i;
+                    if (spikesInput.get().getValue(index) == 0) spikesInput.get().setValue(index, 1e-10);
+                }
+            }
         }
     }
 
@@ -265,7 +280,11 @@ public class BranchSpikePrior extends Distribution {
 
         if (!useAnalyticalSingleTypeSolutionInput.get() && nTypes == 1) return multiTypeCalculateLogP();
         else if (nTypes == 1) return singleTypeCalculateLogP();
-        else return multiTypeCalculateLogP();
+        else try {return multiTypeCalculateLogP();
+            } catch(MaxCountExceededException ex) {
+                System.err.println("Warning: integration error encountered in prior calculation");
+                return Double.NEGATIVE_INFINITY;
+            }
     }
 
 
@@ -285,6 +304,8 @@ public class BranchSpikePrior extends Distribution {
         }
 
         computeConstants(A, B);
+
+        // Reuse a single GammaDistributionImpl across all nodes
         GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
 
         // Loop over all nodes in the tree
@@ -295,11 +316,13 @@ public class BranchSpikePrior extends Distribution {
             // Handle origin branch and sampled ancestor branches
             if (node.isRoot() || node.isDirectAncestor()) {
                 expectedHiddenEvents[nodeNr] = 0.0;
-                // Spikes = 0 for origin branch and sampled ancestor branches
-                // Set a pseudo-prior for latent spikes when they are not included in the model
-                // This facilitates transitions between models of different dimensions
-                gamma.setAlpha(spikeShape);
-                gamma.setBeta(1.0 / spikeShape);
+                // Spikes = 0 for origin branch and sampled ancestor branches.
+                // Use a Gamma(2.0,0.5) pseudo-prior for latent spikes when they are not
+                // included in the model. This facilitates transitions between models of
+                // different dimensions.
+
+                gamma.setAlpha(2.0);
+                gamma.setBeta(0.5);
                 logP += gamma.logDensity(branchSpike);
                 continue;
             }
@@ -367,9 +390,10 @@ public class BranchSpikePrior extends Distribution {
         intervalEndTimes = parameterization.getIntervalEndTimes();
         finalSampleOffset = finalSampleOffsetInput.get().getArrayValue(0);
 
-        double spikeShape = spikeShapeInput.get().getArrayValue(0);
-        if (spikeShape <= 0) {
-            return Double.NEGATIVE_INFINITY;
+        for (int i = 0; i < spikeShapeInput.get().getDimension(); i++) {
+            if (spikeShapeInput.get().getArrayValue(i) <= 0) {
+                return Double.NEGATIVE_INFINITY;
+            }
         }
 
         if (requiresReintegration) {
@@ -385,15 +409,16 @@ public class BranchSpikePrior extends Distribution {
             for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
                 Node node = treeInput.get().getNode(nodeNr);
                 if (node.isRoot() || node.isDirectAncestor()) {
+                    // The root/SA pseudo-prior contribution to logP is intentionally NOT
+                    // applied here. It is applied below in the main per-node loop.
                     for (int i = 0; i < nTypes; i++) {
                         expectedHiddenEvents[nodeNr * nTypes + i] = 0.0;
-//                        piVals[nodeNr * nTypes + i] = 0.0;
                     }
                     continue;
                 }
                 double[] expHidden = hiddenEventsIntegrator.getExpNrHiddenEventsForNode(nodeNr);
                 // π is evaluated at the parent node: the observed speciation event is at the
-                // start (past-most point) of the branch, which is the parent node.
+                // start of the branch, which is the parent node.
                 int parentNr = node.getParent().getNr();
                 double[] pi = hiddenEventsIntegrator.getPiAtNode(parentNr);
                 System.arraycopy(expHidden, 0, expectedHiddenEvents, nodeNr * nTypes, nTypes);
@@ -405,18 +430,21 @@ public class BranchSpikePrior extends Distribution {
         }
 
         // Reuse a single GammaDistributionImpl across all nodes
-        GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
+        GammaDistributionImpl gamma = new GammaDistributionImpl(1.0, 1.0);
         for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
             Node node = treeInput.get().getNode(nodeNr);
 
             if (node.isRoot() || node.isDirectAncestor()) {
-                // Spikes = 0 for origin branch and sampled ancestor branches
-                // Set a pseudo-prior for latent spikes when they are not included in the model
-                // This facilitates transitions between models of different dimensions
-                gamma.setAlpha(spikeShape);
-                gamma.setBeta(1.0 / spikeShape);
+                // Spikes = 0 for origin branch and sampled ancestor branches.
+                // Use a Gamma(2.0,0.5) pseudo-prior for latent spikes when they are not
+                // included in the model. This facilitates transitions between models of
+                // different dimensions.
+
                 for (int i = 0; i < nTypes; i++) {
                     double branchSpike = spikesInput.get().getValue(nodeNr * nTypes + i);
+
+                    gamma.setAlpha(2);
+                    gamma.setBeta(0.5);
                     logP += gamma.logDensity(branchSpike);
                 }
                 continue;
@@ -434,6 +462,8 @@ public class BranchSpikePrior extends Distribution {
                 double logOneMinusPi = (pi < 1.0) ? Math.log(1.0 - pi) : Double.NEGATIVE_INFINITY;
 
                 boolean isZeroSpike = (branchSpike < spikeZeroTol);
+
+                double spikeShape = getSpikeShape(i);
 
                 if (expNrHiddenEvents > 0) {
                     double branchP = 0.0;
@@ -585,16 +615,16 @@ public class BranchSpikePrior extends Distribution {
             spikesInput.get().setValue(nodeNr, spike);
 
         }
-
     }
 
     private void sampleMultiTypeSpikes() {
 
-        double spikeShape = spikeShapeInput.get().getValue();
         spikesInput.get().setDimension(nodeCount * nTypes);
 
-        if (spikeShape <= 0) {
-            throw new IllegalArgumentException("Cannot sample spikes because spikeShape is non-positive " + spikeShape);
+        for (int i = 0; i < nTypes; i++) {
+            if (getSpikeShape(i) <= 0) {
+                throw new IllegalArgumentException("Cannot sample spikes because spikeShape is non-positive " + getSpikeShape(i));
+            }
         }
 
         MultiTypeHiddenEventsIntegrator hiddenEventsIntegrator = new MultiTypeHiddenEventsIntegrator(
@@ -636,6 +666,7 @@ public class BranchSpikePrior extends Distribution {
 
                 int nHiddenEvents = (int) Randomizer.nextPoisson(expNrHiddenEvents);
                 int nSpikes = node.getParent().isFake() ? nHiddenEvents : nHiddenEvents + obsEvent;
+                double spikeShape = getSpikeShape(i);
                 double alpha = spikeShape * nSpikes;
 
                 double spike = (nSpikes == 0) ? 0.0 : Randomizer.nextGamma(alpha, spikeShape);
@@ -669,6 +700,12 @@ public class BranchSpikePrior extends Distribution {
 
     public double getPiVals(int nodeNr, int type) {
         return piVals[nodeNr * nTypes + type];
+    }
+
+    public double getSpikeShape(int type) {
+        int spikeShapeDim = spikeShapeInput.get().getDimension();
+        if (nTypes == 1 || spikeShapeDim == 1) return spikeShapeInput.get().getArrayValue(0);
+        else return spikeShapeInput.get().getArrayValue(type);
     }
 
     @Override
@@ -714,4 +751,3 @@ public class BranchSpikePrior extends Distribution {
     }
 
 }
-

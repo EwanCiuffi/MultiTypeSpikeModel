@@ -19,13 +19,10 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     final public Input<BooleanParameter> relaxedInput = new Input<>("relaxed", "if false then use strict clock", Input.Validate.OPTIONAL);
     final public Input<BooleanParameter> indicatorInput = new Input<>("indicator", "if false then no spikes are inferred", Input.Validate.OPTIONAL);
     final public Input<Boolean> noSpikeOnDatedTipsInput = new Input<>("noSpikeOnDatedTips", "Set to true if dated tips should have a spike of 0", false);
-    final public Input<Boolean> projectRelaxedRatesInput = new Input<>("projectRelaxedRates", "(Experimental feature!) If true, project relaxed rates orthogonally to spikes so spikes explain variance first.", false);
 
     public int nTypes, nodeCount;
     int spikeMeanDim;
 
-    private double[] projectedRates;
-    private boolean projectionDirty = true;
 
     // Threshold for treating a spike as numerically zero
     private static final double spikeZeroTol = 1e-9;
@@ -45,18 +42,11 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
             }
         }
 
-        if (projectRelaxedRatesInput.get() && ratesInput.get() == null) {
-            throw new IllegalArgumentException(
-                    "'projectRelaxedRates' requires a 'rates' input to be provided.");
-        }
-
         if (ratesInput.get() != null) {
             ratesInput.get().setDimension(treeInput.get().getNodeCount());
         }
         nodeCount = treeInput.get().getNodeCount();
         nTypes = spikesInput.get().getDimension() / nodeCount;
-
-        projectedRates = new double[nodeCount];
 
         // Spike mean dimension checks
         spikeMeanDim = spikeMeanInput.get().getDimension();
@@ -108,9 +98,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     }
 
 
-    // -------------------------------------------------------------------------
     //  Spike size
-    // -------------------------------------------------------------------------
 
     /**
      * Get the size of a spike (this will be zero if the node is the root or a sampled ancestor)
@@ -152,10 +140,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     }
 
 
-    // -------------------------------------------------------------------------
     // Rate computation
-    // -------------------------------------------------------------------------
-
 
     @Override
     public double getRateForBranch(Node node) {
@@ -164,14 +149,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
         double spikeSize = getSpikeSize(node);
 
-        double effectiveRelaxedRate;
-        if (projectRelaxedRatesInput.get()) {
-            // Only recompute the projection when inputs have changed
-            if (projectionDirty) recomputeProjection();
-            effectiveRelaxedRate = projectedRates[node.getNr()];
-        } else {
-            effectiveRelaxedRate = getRawRelaxedRate(node);
-        }
+        double effectiveRelaxedRate = getRawRelaxedRate(node);
 
         // Effective rate takes into account spike and base rate
         double branchDistance = node.getLength() * effectiveRelaxedRate + spikeSize;
@@ -180,7 +158,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
 
     /**
-     * Returns the raw relaxed branch rate for a node, before any projection.
+     * Returns the raw relaxed branch rate for a node.
      * This is the value that getRateForBranch would use for the multiplicative
      * contribution to branch distance (i.e. baseRate * relaxed_rate_multiplier).
      */
@@ -194,59 +172,10 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     }
 
 
-    // -------------------------------------------------------------------------
-    // Projection
-    // -------------------------------------------------------------------------
-
-    private void recomputeProjection() {
-
-        double baseRate = meanRateInput.get().getArrayValue();
-
-        double dotDS = 0.0;  // d · s  where d[i] = r[i] - baseRate
-        double dotSS = 0.0;  // s · s
-
-        // Pass 1: accumulate dot products over all active branches
-        for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
-            Node node = treeInput.get().getNode(nodeNr);
-            if (node.isRoot() || node.isDirectAncestor()) {
-                projectedRates[nodeNr] = Double.NaN;
-                continue;
-            }
-            double s_i = getSpikeSize(node);
-            double d_i = getRawRelaxedRate(node) - baseRate;  // mean-zero deviation
-            dotDS += d_i * s_i;
-            dotSS += s_i * s_i;
-        }
-
-        // When no branch has a spike, the spike vector is zero and projection is
-        // undefined — fall back to raw rates (coeff = 0 achieves this).
-        double coeff = (dotSS > spikeZeroTol) ? dotDS / dotSS : 0.0;
-
-        // Pass 2: apply projection to each active branch
-        for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
-            Node node = treeInput.get().getNode(nodeNr);
-            if (node.isRoot() || node.isDirectAncestor()) continue;
-
-            double s_i = getSpikeSize(node);
-            double r_i = getRawRelaxedRate(node);
-
-            // r_perp[i] = (r[i] - baseRate) - coeff * s[i] + baseRate
-            //           = r[i] - coeff * s[i]
-            // For s[i] == 0: r_perp[i] = r[i]  (raw rate, as specified)
-            projectedRates[nodeNr] = r_i - coeff * s_i;
-        }
-
-        projectionDirty = false;
-    }
-
-
-    // -------------------------------------------------------------------------
     // BEAST2 state management
-    // -------------------------------------------------------------------------
 
     @Override
     protected boolean requiresRecalculation() {
-        projectionDirty = true;
         if (InputUtil.isDirty(spikesInput) || InputUtil.isDirty(spikeMeanInput) ||
                 InputUtil.isDirty(ratesInput) || InputUtil.isDirty(meanRateInput)) {
             return true;
@@ -267,7 +196,6 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
     @Override
     public void restore() {
-        projectionDirty = true;
         super.restore();
     }
 
