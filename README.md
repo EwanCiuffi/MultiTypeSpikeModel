@@ -63,7 +63,7 @@ such that the posterior probability of $\mathbb{I} = 1$ provides evidence for pu
 
 
 > In single‑type models, all lineages share the same $S^\mu$.  
-> In multi‑type models, each type $i$ can have its own $S^\mu_i$, enabling type‑specific punctuated evolution.
+> In multi‑type models, each type $i$ can be associated with its own $S^\mu_i$ and/or $S^\alpha_i$ parameters, enabling type‑specific punctuated evolution.
 
 ---
 
