@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static junit.framework.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 
 public class BranchSpikePriorTest {
 
@@ -86,6 +87,7 @@ public class BranchSpikePriorTest {
                 singleTypeResult, multiTypeResult, tolerance);
 
     }
+
 
     @Test
     public void BSPMultiTypeSingleTypeComparisonSkylineTest() {
@@ -470,6 +472,85 @@ public class BranchSpikePriorTest {
         double tolerance = 1e-5;
         assertEquals("Multi-type logP does not match exact R calculation.",
                 expectedLogP, logP, tolerance);
+    }
+
+    /**
+     * Test to verify that the multi-type model correctly treats the observed speciation
+     * event as mutually exclusive across types.
+     * * In the generative model, an observed speciation event belongs to exactly one type.
+     * Therefore, it is impossible for all types on a branch to simultaneously have
+     * 0 observed events (which would result in a 0.0 spike if there are no hidden events).
+     * * This test has 0.0 spikes for all types on all branches.
+     * Under an incorrect assumption of statistical independence between types,
+     * the model would allow the observed event to "vanish" (evaluate to 0 for all types)
+     * and return a finite logP.
+     * Under the correct mutually exclusive joint probability model, it must return NEGATIVE_INFINITY.
+     */
+    @Test
+    public void multiTypeMutuallyExclusiveObservedEventTest() {
+        String newick = "(t1[&state=0]:1.0, t2[&state=1]:1.0);";
+        Tree tree = new TreeParser(newick, false, false, true, 0);
+
+        Parameterization parameterization = new CanonicalParameterization();
+        parameterization.initByName(
+                "typeSet", new TypeSet(2),
+                "processLength", new RealParameter("2.0"),
+                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0 2.0"), 2),
+                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0 1.0"), 2),
+                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.5 0.5"), 2),
+                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5 0.5"), 2),
+                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0 0.0"), 2)
+        );
+
+        BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
+        density.initByName(
+                "parameterization", parameterization,
+                "startTypePriorProbs", new RealParameter("0.5 0.5"),
+                "conditionOnSurvival", false,
+                "tree", tree,
+                "typeLabel", "state",
+                "parallelize", false,
+                "storeIntegrationResults", true
+        );
+        density.calculateLogP();
+
+        // Scenario 1: All zero spikes
+        BranchSpikePrior bspZeroes = new BranchSpikePrior();
+        bspZeroes.initByName(
+                "parameterization", parameterization,
+                "tree", tree,
+                "spikeShape", "1.0",
+                "spikes", "0.0 0.0 0.0 0.0 0.0 0.0",
+                "startTypePriorProbs", new RealParameter("0.5 0.5"),
+                "bdmDistr", density,
+                "initializeSpikes", false,
+                "useAnalyticalSingleTypeSolution", false
+        );
+
+        double logPZeroes = bspZeroes.calculateLogP();
+
+        assertEquals("An observed speciation event must occur on exactly one type. " +
+                        "A configuration with 0.0 spikes across all types should be impossible.",
+                Double.NEGATIVE_INFINITY, logPZeroes, 1e-10);
+
+        // Scenario 2: Exactly one type has a spike per branch
+        BranchSpikePrior bspValid = new BranchSpikePrior();
+        bspValid.initByName(
+                "parameterization", parameterization,
+                "tree", tree,
+                "spikeShape", "1.0",
+                "spikes", "1.0 0.0 0.0 1.5 0.5 0.0",
+                "startTypePriorProbs", new RealParameter("0.5 0.5"),
+                "bdmDistr", density,
+                "initializeSpikes", false,
+                "useAnalyticalSingleTypeSolution", false
+        );
+
+        double logPValid = bspValid.calculateLogP();
+
+        // Assert that assigning the event to exactly one type yields a valid, finite logP
+        assertFalse("Assigning the observed speciation event to exactly one type should yield a valid finite logP.",
+                Double.isInfinite(logPValid) || Double.isNaN(logPValid));
     }
 
     @Test
