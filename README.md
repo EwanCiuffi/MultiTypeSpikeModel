@@ -58,7 +58,7 @@ such that the posterior probability of $\mathbb{I} = 1$ provides evidence for pu
 | Parameter | Meaning | Notes |
 |----------|---------|-------|
 | $S^\mu$ or $S^\mu_i$ | Spike mean | Expected substitutions per site **per branching event**. Optionally type‑specific in multi‑type mode. |
-| $S^\alpha$ or $S^\alpha$ | Spike shape | Controls variance in spike sizes. Larger $S^\alpha$ $\rightarrow$ more uniform spikes. Optionally type‑specific in multi‑type mode. |
+| $S^\alpha$ or $S^\alpha_i$ | Spike shape | Controls variance in spike sizes. Larger $S^\alpha$ $\rightarrow$ more uniform spikes. Optionally type‑specific in multi‑type mode. |
 | $\mathbb{I}$ | Spike model indicator | Bernoulli prior; posterior support quantifies evidence for punctuated evolution. |
 
 
