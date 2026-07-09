@@ -16,6 +16,7 @@ import org.apache.commons.math.distribution.GammaDistributionImpl;
 import org.apache.commons.math3.exception.MaxCountExceededException;
 
 import java.util.*;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 
@@ -249,7 +250,6 @@ public class BranchSpikePrior extends Distribution {
         return expNrHiddenEvents;
     }
 
-
     @Override
     public double calculateLogP() {
 
@@ -260,11 +260,24 @@ public class BranchSpikePrior extends Distribution {
 
         if (!useAnalyticalSingleTypeSolutionInput.get() && nTypes == 1) return multiTypeCalculateLogP();
         else if (nTypes == 1) return singleTypeCalculateLogP();
-        else try {return multiTypeCalculateLogP();
-            } catch(MaxCountExceededException ex) {
-                System.err.println("Warning: integration error encountered in prior calculation");
+        else {
+            try {
+                return multiTypeCalculateLogP();
+            } catch (MaxCountExceededException ex) {
+                // Catches it if thrown directly on the main thread
+                 System.err.println("Warning: integration error encountered in prior calculation (sync)");
                 return Double.NEGATIVE_INFINITY;
+            } catch (CompletionException ex) {
+                // Catches it if thrown in the CompletableFuture threads
+                if (ex.getCause() instanceof MaxCountExceededException) {
+                     System.err.println("Warning: integration error encountered in prior calculation (async)");
+                    return Double.NEGATIVE_INFINITY;
+                } else {
+                    // If it was a different multithreading crash (e.g. NullPointer), re-throw it
+                    throw ex;
+                }
             }
+        }
     }
 
 
