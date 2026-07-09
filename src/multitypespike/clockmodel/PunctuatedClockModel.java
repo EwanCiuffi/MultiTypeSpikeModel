@@ -24,9 +24,6 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     int spikeMeanDim;
 
 
-    // Threshold for treating a spike as numerically zero
-    private static final double spikeZeroTol = 1e-9;
-
     @Override
     public void initAndValidate() {
 
@@ -93,8 +90,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         double spikeMean = getSpikeMean(type);
         double branchSpike = spikesInput.get().getValue(node.getNr() * nTypes + type);
 
-        if (branchSpike < spikeZeroTol) return 0;
-        else return branchSpike * spikeMean;
+        return branchSpike * spikeMean;
     }
 
 
@@ -126,9 +122,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         for (int i = 0; i < nTypes; i++) {
             double spikeMean = getSpikeMean(i);
             double branchSpike = spikesInput.get().getValue(node.getNr() * nTypes + i);
-            if (branchSpike >= spikeZeroTol) {
-                spikeSum += branchSpike * spikeMean;
-            }
+            spikeSum += branchSpike * spikeMean;
         }
         return spikeSum;
     }

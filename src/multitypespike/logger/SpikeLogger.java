@@ -35,7 +35,6 @@ public class SpikeLogger extends CalculationNode implements Function, Loggable {
         else return nodeCount;
     }
 
-
     @Override
     public double getArrayValue(int dim) {
         if(nTypes == 1) {
@@ -50,9 +49,6 @@ public class SpikeLogger extends CalculationNode implements Function, Loggable {
     }
 
 
-    /**
-     * Loggable interface implementation follows
-     */
     @Override
     public void init(PrintStream out) {
         String id = this.getID();
@@ -76,10 +72,6 @@ public class SpikeLogger extends CalculationNode implements Function, Loggable {
         for (int i = 0; i < this.getDimension(); i ++) {
             out.print(this.getArrayValue(i) + "\t");
         }
-    }
-
-    public int getNTypes() {
-        return nTypes;
     }
 
     @Override

@@ -41,7 +41,7 @@ logP1 <- exact_marginal_logdensity(spike1, expEvents1, spikeShape, isFakeParent 
 
 # Add the root pseudo-prior
 spike_root <- 0.5
-logP_root <- dgamma(spike_root, shape=2.0, scale=0.5, log=TRUE)
+logP_root <- dgamma(spike_root, shape=1.0, scale=1.0, log=TRUE)
 
 
 total_logP <- logP0 + logP1 + logP_root

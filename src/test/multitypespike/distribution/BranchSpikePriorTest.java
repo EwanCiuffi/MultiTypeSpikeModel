@@ -382,7 +382,7 @@ public class BranchSpikePriorTest {
         double logP = bsp.calculateLogP();
 
         // This expected value comes directly from the total_logP output of generate_true_logdensity.R
-        double expectedLogP = -2.56800013;
+        double expectedLogP = -2.76114731;
 
         double tolerance = 1e-5;
         assertEquals("logP does not match exact R calculation.",
@@ -391,13 +391,11 @@ public class BranchSpikePriorTest {
 
     /**
      * Test to validate the calculation of the multi-type branch spike density.
-     * We use Java Reflection to bypass the multi-type numerical integrator,
-     * injecting known expected hidden events and pi values, allowing direct
-     * comparison against exact values calculated in R.
+     * We override getExpNrHiddenEventsForBranch to condition on known expected hidden events,
+     * allowing direct comparison against exact values calculated in R.
      */
     @Test
     public void exactMultiTypeDensityTest() throws Exception {
-        // Simple 2-taxon tree
         String newick = "(t1[&state=0]:1.0, t2[&state=1]:1.0);";
         Tree tree = new TreeParser(newick, false, false, true, 0);
 
@@ -467,7 +465,7 @@ public class BranchSpikePriorTest {
         double logP = bsp.calculateLogP();
 
         // This expected value comes directly from the total_logP output of generate_true_multitype_logdensity.R
-        double expectedLogP = -5.35539621;
+        double expectedLogP = -6.07916977;
 
         double tolerance = 1e-5;
         assertEquals("Multi-type logP does not match exact R calculation.",

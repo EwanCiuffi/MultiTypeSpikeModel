@@ -10,8 +10,8 @@ import multitypespike.distribution.BranchSpikePrior;
 
 import java.io.PrintStream;
 
-@Description("Logs branch type probabilities, either all types or just the maximum.")
-public class BranchTypeProbabilityLogger extends CalculationNode implements Function, Loggable {
+@Description("Logs node type probabilities, either all types or just the maximum.")
+public class NodeTypeProbabilityLogger extends CalculationNode implements Function, Loggable {
 
     final public Input<BranchSpikePrior> branchSpikePriorInput =
             new Input<>("branchSpikePrior", "Branch spike prior", Validate.REQUIRED);
@@ -44,29 +44,29 @@ public class BranchTypeProbabilityLogger extends CalculationNode implements Func
 
     @Override
     public double getArrayValue(int dim) {
-        int itemsPerNode = logMax ? 2 : nTypes;
-        int nodeNr = dim / itemsPerNode;
-        int index = dim % itemsPerNode;
-
-        // Find the maximum for this node
-        int maxType = 0;
-        double maxProb = branchSpikePriorInput.get().getPiVals(nodeNr, 0);
-        for (int t = 1; t < nTypes; t++) {
-            double prob = branchSpikePriorInput.get().getPiVals(nodeNr, t);
-            if (prob > maxProb) {
-                maxProb = prob;
-                maxType = t;
-            }
-        }
-
         if (logMax) {
+            int nodeNr = dim / 2;
+            int index = dim % 2;
+
+            // Find the maximum for this node
+            int maxType = 0;
+            double maxProb = branchSpikePriorInput.get().getPiVals(nodeNr, 0);
+            for (int t = 1; t < nTypes; t++) {
+                double prob = branchSpikePriorInput.get().getPiVals(nodeNr, t);
+                if (prob > maxProb) {
+                    maxProb = prob;
+                    maxType = t;
+                }
+            }
             // Index 0 is maxType, Index 1 is maxProb
             return (index == 0) ? maxType : maxProb;
         } else {
-            // Standard: return the probability for the specific type
-            return branchSpikePriorInput.get().getPiVals(nodeNr, index);
+            int nodeNr = dim / nTypes;
+            int type = dim % nTypes;
+            return branchSpikePriorInput.get().getPiVals(nodeNr, type);
         }
     }
+
 
     @Override
     public void init(PrintStream out) {
@@ -90,12 +90,6 @@ public class BranchTypeProbabilityLogger extends CalculationNode implements Func
         for (int i = 0; i < this.getDimension(); i++) {
             out.print(this.getArrayValue(i) + "\t");
         }
-    }
-
-    public int getNTypes() { return nTypes; }
-
-    public double getProbability(int nodeNr, int type) {
-        return branchSpikePriorInput.get().getPiVals(nodeNr, type);
     }
 
     @Override
