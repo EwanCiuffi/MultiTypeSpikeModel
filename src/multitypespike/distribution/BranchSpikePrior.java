@@ -452,9 +452,11 @@ public class BranchSpikePrior extends Distribution {
 
             // Calculate P0 (no observed event) and P1 (1 observed event) for all types
             for (int i = 0; i < nTypes; i++) {
+                double expNrHiddenEvents = expectedHiddenEvents[nodeNr * nTypes + i];
+                if (expNrHiddenEvents > 1000.0) return Double.NEGATIVE_INFINITY;
+
                 double branchSpike = spikesInput.get().getValue(nodeNr * nTypes + i);
                 boolean isZeroSpike = (branchSpike == 0.0);
-                double expNrHiddenEvents = expectedHiddenEvents[nodeNr * nTypes + i];
                 double spikeShape = getSpikeShape(i);
 
                 double prob0 = 0.0;
