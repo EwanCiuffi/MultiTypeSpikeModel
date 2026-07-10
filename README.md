@@ -59,17 +59,17 @@ such that the posterior probability of $\mathbb{I} = 1$ provides evidence for pu
 |----------|---------|-------|
 | $S^\mu$ or $S^\mu_i$ | Spike mean | Expected substitutions per site **per branching event**. Optionally type‑specific in multi‑type mode. |
 | $S^\alpha$ or $S^\alpha_i$ | Spike shape | Controls variance in spike sizes. Larger $S^\alpha$ $\rightarrow$ more uniform spikes. Optionally type‑specific in multi‑type mode. |
-| $\mathbb{I}$ | Spike model indicator | Bernoulli prior; posterior support quantifies evidence for punctuated evolution. |
+| $\mathbb{I}$ or $\mathbb{I}_i$ | Spike model indicator | Bernoulli prior; posterior support quantifies evidence for punctuated evolution. Optionally type‑specific in multi‑type mode. |
 
 
-> In single‑type models, all lineages share the same $S^\mu$.  
-> In multi‑type models, each type $i$ can be associated with its own $S^\mu_i$ and/or $S^\alpha_i$ parameters, enabling type‑specific punctuated evolution.
+> In single‑type models, all lineages share the same $S^\mu$ and $S^\alpha$.  
+> In multi‑type models, each type $i$ can be associated with its own $S^\mu_i$ and/or $S^\alpha_i$ and/or $\mathbb{I}_i$ parameters, enabling testing of type‑specific differences in punctuated evolution.
 
 ---
 
 ## Testing for Differences in Punctuated Evolution Between Types
 
-Type‑specific spike means allow for hypothesis testing:
+Type‑specific spike parameters allow for hypothesis testing:
 
 - **Trait‑dependent evolution:**  
   Are certain traits (e.g., body size, ecological niche) associated with larger spikes?
