@@ -404,8 +404,6 @@ public class BranchSpikePrior extends Distribution {
             for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
                 Node node = treeInput.get().getNode(nodeNr);
                 if (node.isRoot() || node.isDirectAncestor()) {
-                    // The root/SA pseudo-prior contribution to logP is intentionally NOT
-                    // applied here. It is applied below in the main per-node loop.
                     for (int i = 0; i < nTypes; i++) {
                         expectedHiddenEvents[nodeNr * nTypes + i] = 0.0;
                     }

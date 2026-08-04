@@ -991,4 +991,113 @@ public class MultiTypeHiddenEventsTest {
         }
     }
 
+
+    @Test
+    public void multiTypeSingleTypeEquivalenceTest() {
+
+        String newick = "(t1[&state=1]:1.5, t2[&state=1]:0.5);";
+        Tree tree = new TreeParser(newick, false, false, true, 0);
+        RealParameter origin = new RealParameter("2.5");
+
+        RealParameter startTypePriorProbsSingle = new RealParameter("1.0");
+        RealParameter startTypePriorProbsMulti = new RealParameter("0.5 0.5");
+
+        // Single-type parameterization
+        Parameterization paramSingle = new CanonicalParameterization();
+        paramSingle.initByName(
+                "typeSet", new TypeSet(1),
+                "processLength", origin,
+                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0"), 1),
+                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0"), 1),
+                "birthRateAmongDemes", new SkylineMatrixParameter(null, new RealParameter("0.0"), 1),
+                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.0"), 1),
+                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5"), 1),
+                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 1)
+        );
+
+        BirthDeathMigrationDistribution densitySingle = new BirthDeathMigrationDistribution();
+        densitySingle.initByName(
+                "parameterization", paramSingle,
+                "startTypePriorProbs", startTypePriorProbsSingle,
+                "conditionOnSurvival", false,
+                "tree", tree,
+                "typeLabel", "state",
+                "parallelize", false,
+                "useAnalyticalSingleTypeSolution", false,
+                "storeIntegrationResults", true
+        );
+        densitySingle.calculateLogP();
+
+        BranchSpikePrior bspSingle = new BranchSpikePrior();
+        bspSingle.initByName(
+                "parameterization", paramSingle,
+                "tree", tree,
+                "spikeShape", "1.0",
+                "spikes", "1.0 0.5 0.1",
+                "startTypePriorProbs", startTypePriorProbsSingle,
+                "bdmDistr", densitySingle
+        );
+
+        // Multi-type parameterization
+        Parameterization paramMulti = new CanonicalParameterization();
+        paramMulti.initByName(
+                "typeSet", new TypeSet(2),
+                "processLength", origin,
+                // All parameters except migration rates are symmetric across types
+                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0 2.0"), 2),
+                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0 1.0"), 2),
+                "birthRateAmongDemes", new SkylineMatrixParameter(null, new RealParameter("0.0 0.0"), 2),
+                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.8 1.2"), 2),
+                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5 0.5"), 2),
+                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0 0.0"), 2)
+        );
+
+        BirthDeathMigrationDistribution densityMulti = new BirthDeathMigrationDistribution();
+        densityMulti.initByName(
+                "parameterization", paramMulti,
+                "startTypePriorProbs", startTypePriorProbsMulti,
+                "conditionOnSurvival", false,
+                "tree", tree,
+                "typeLabel", "state",
+                "parallelize", false,
+                "useAnalyticalSingleTypeSolution", false,
+                "storeIntegrationResults", true
+        );
+        densityMulti.calculateLogP();
+
+        ContinuousOutputModel[] p0geResultsMulti = densityMulti.getIntegrationResults();
+
+        Executor pool = ForkJoinPool.commonPool();
+        double[] weightOfNodeSubTree = new double[tree.getLeafNodeCount() * 2];
+
+        MultiTypeHiddenEventsIntegrator multitypeHiddenEvents =
+                new MultiTypeHiddenEventsIntegrator(
+                        paramMulti, tree, p0geResultsMulti,
+                        1e-6, 1e-6,
+                        false, true, pool, weightOfNodeSubTree, 0.1
+                );
+
+        multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbsMulti.getDoubleValues(), paramMulti, 0.0);
+
+        // Equivalence comparison
+        double tolerance = 1e-3;
+        for (int nodeNr = 0; nodeNr <= 1; nodeNr++) {
+            Node node = tree.getNode(nodeNr);
+
+            // Get multi-type expectations and sum them across the 2 types
+            double[] multiTypeHiddenEventsArr = multitypeHiddenEvents.getExpNrHiddenEventsForNode(nodeNr);
+            double multiTypeResultTotal = multiTypeHiddenEventsArr[0] + multiTypeHiddenEventsArr[1];
+
+            // Calculate single-type expectation directly
+            double singleTypeResult = bspSingle.getExpNrHiddenEventsForBranch(node);
+
+            System.out.printf("Node %d: multi-type total = %.10f, single-type = %.10f%n",
+                    nodeNr, multiTypeResultTotal, singleTypeResult);
+
+            assertEquals("Mismatch at node " + nodeNr + ": single-type result = " + singleTypeResult
+                            + " does not match multi-type total result = " +  multiTypeResultTotal,
+                    singleTypeResult, multiTypeResultTotal, tolerance);
+        }
+    }
+
 }
