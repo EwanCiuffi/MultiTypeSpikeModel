@@ -13,12 +13,25 @@ import beast.base.inference.util.InputUtil;
 
 public class PunctuatedClockModel extends BranchRateModel.Base {
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
+
     final public Input<Function> spikeMeanInput = new Input<>("spikeMean", "mean parameter for each spike", Input.Validate.REQUIRED);
+
     final public Input<RealParameter> spikesInput = new Input<>("spikes", "spikes associated with each branch on the tree", Input.Validate.REQUIRED);
-    final public Input<RealParameter> ratesInput = new Input<>("rates", "rates associated with nodes in the tree for sampling of individual rates among branches", Input.Validate.OPTIONAL);
+
+    final public Input<RealParameter> ratesInput = new Input<>("rates", "Per-branch rate parameters. If nonCentered=false (default), these are the direct lognormal multipliers. " +
+            "If true, these are standard N(0,1) values transformed internally.", Input.Validate.OPTIONAL);
+
     final public Input<BooleanParameter> relaxedInput = new Input<>("relaxed", "if false then use strict clock", Input.Validate.OPTIONAL);
+
     final public Input<BooleanParameter> indicatorInput = new Input<>("indicator", "if false then no spikes are inferred", Input.Validate.OPTIONAL);
+
     final public Input<Boolean> noSpikeOnDatedTipsInput = new Input<>("noSpikeOnDatedTips", "Set to true if dated tips should have a spike of 0", false);
+
+    final public Input<Boolean> nonCenteredInput = new Input<>("nonCentered", "If true, uses non-centered parameterisation where 'rates' are treated as N(0,1) " +
+            "and transformed internally to maintain a real-space mean of 1. If false (default), 'rates' are direct multipliers.", false);
+
+    final public Input<RealParameter> rateSDInput = new Input<>("rateSD", "standard deviation of the relaxed-clock lognormal rate distribution. " +
+            "Only required when 'nonCentered' is true.", Input.Validate.OPTIONAL);
 
     public int nTypes, nodeCount;
     int spikeMeanDim, indicatorDim;
@@ -42,6 +55,11 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         if (ratesInput.get() != null) {
             ratesInput.get().setDimension(treeInput.get().getNodeCount());
         }
+
+        if (nonCenteredInput.get() && rateSDInput.get() == null) {
+            throw new IllegalArgumentException("If 'nonCentered' is true, the 'rateSD' input must be provided.");
+        }
+
         nodeCount = treeInput.get().getNodeCount();
         nTypes = spikesInput.get().getDimension() / nodeCount;
 
@@ -101,8 +119,6 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     }
 
 
-    //  Spike size
-
     /**
      * Get the size of a spike (this will be zero if the node is the root or a sampled ancestor)
      * @param node
@@ -140,8 +156,6 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         return indicatorInput.get().getValue(type);
     }
 
-    // Rate computation
-
     @Override
     public double getRateForBranch(Node node) {
         double baseRate = meanRateInput.get().getArrayValue();
@@ -166,11 +180,26 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         double baseRate = meanRateInput.get().getArrayValue();
         if (ratesInput.get() == null) return baseRate;
         if (relaxedInput.get() == null || relaxedInput.get().getValue()) {
-            return ratesInput.get().getValue(node.getNr()) * baseRate;
+            return getRateMultiplier(node) * baseRate;
         }
         return baseRate;
     }
 
+    /**
+     * Returns the per-branch rate multiplier for a node.
+     * Centered (default): Returns the 'rates' parameter directly.
+     * Non-centered: Reconstructs the multiplier from z ~ N(0,1) as
+     * exp(rateSD * z - rateSD^2 / 2) to maintain a mean of 1 while decoupling
+     * the parameters.
+     */
+    private double getRateMultiplier(Node node) {
+        double z = ratesInput.get().getValue(node.getNr());
+        if (!nonCenteredInput.get()) {
+            return z;
+        }
+        double sigma = rateSDInput.get().getArrayValue();
+        return Math.exp(sigma * z - 0.5 * sigma * sigma);
+    }
 
     // BEAST2 state management
 
@@ -184,6 +213,9 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
             return true;
         }
         if (indicatorInput.get() != null && InputUtil.isDirty(indicatorInput)) {
+            return true;
+        }
+        if (nonCenteredInput.get() && rateSDInput.get() != null && InputUtil.isDirty(rateSDInput)) {
             return true;
         }
         return false;
