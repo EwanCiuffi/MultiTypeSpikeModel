@@ -46,7 +46,7 @@ observed event is weighted by its probability under the tree prior; both are sum
 | $\mu_c$, $\sigma_r$ | Mean clock rate and standard deviation of the log-normal relaxed clock. |
 
 Type-specific spike means test whether punctuated change differs between types, for example between
-lineages with different traits or in different regions.
+lineages with different traits or in different geographic regions.
 
 ---
 
@@ -89,8 +89,7 @@ in `build/dist/` without installing it.
 
 1. On the **Priors** tab, choose **BDMM-Prime** as the tree prior and set up its types and
    parameterization.
-2. On the **Clock Model** tab, choose **MultiTypeSpikeClock (needs BDMM-Prime)**. The two steps can be
-   done in either order; the spike prior always uses the BDMM-Prime settings of the same partition.
+2. On the **Clock Model** tab, choose **MultiTypeSpikeClock (needs BDMM-Prime)**. The spike prior always uses the BDMM-Prime settings of the same partition.
 3. Adjust the priors on the spike mean, spike shape and clock parameters on the **Priors** tab.
 
 Notes:
