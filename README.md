@@ -18,7 +18,7 @@ integrated over rather than sampled.
 The evolutionary distance along branch $e$ is
 
 $$
-d^e = r^e \mu_c \tau^e + \gamma^e \sum_{i=1}^{M} \mathbb{I}_i \, S^\mu_i \, \tilde{s}^e_i ,
+d^e = r^e \mu_c \tau^e + \gamma^e \sum_{i=1}^{M} \mathbb{I}_i S^\mu_i \tilde{s}^e_i ,
 $$
 
 where $\mu_c$ is the mean clock rate, $r^e$ the relative branch rate, $\tau^e$ the branch duration,
@@ -30,7 +30,7 @@ With $N^e_i$ branching events of type $i$ on the branch (the observed event at i
 $i$, plus hidden events),
 
 $$
-\tilde{s}_{i}^{e} \sim \mathrm{Gamma}\!\left( N_{i}^{e} S_{i}^{\alpha},\, \frac{1}{S_{i}^{\alpha}} \right)
+\tilde{s}_{i}^{e} \sim \mathrm{Gamma}\left( N_{i}^{e} {S_{i}^{\alpha}}, \frac{1}{S_{i}^{\alpha}} \right)
 $$
 
 The number of hidden events is Poisson with a mean given by the tree prior, and the type of the
