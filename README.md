@@ -30,7 +30,7 @@ With $N^e_i$ branching events of type $i$ on the branch (the observed event at i
 $i$, plus hidden events),
 
 $$
-\tilde{s}^e_i \sim \mathrm{Gamma}\left(N^e_i S^\alpha_i,\ \tfrac{1}{S^\alpha_i}\right).
+\tilde{s}_{i}^{e} \sim \mathrm{Gamma}\!\left( N_{i}^{e} S_{i}^{\alpha},\, \frac{1}{S_{i}^{\alpha}} \right)
 $$
 
 The number of hidden events is Poisson with a mean given by the tree prior, and the type of the
