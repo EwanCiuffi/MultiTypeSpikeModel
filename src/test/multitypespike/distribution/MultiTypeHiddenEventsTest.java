@@ -7,6 +7,8 @@ import beast.base.inference.parameter.RealParameter;
 import multitypespike.distribution.BranchSpikePrior;
 import multitypespike.distribution.MultiTypeHiddenEventsIntegrator;
 import org.apache.commons.math3.ode.ContinuousOutputModel;
+import bdmmprime.mapping.TypeMappedTree;
+import beast.base.util.Randomizer;
 import org.junit.Test;
 
 import java.util.concurrent.Executor;
@@ -630,9 +632,10 @@ public class MultiTypeHiddenEventsTest {
                 totalTimeInType[1] += state[1] * stepSize;
             }
         }
-        // Tree type statistics from BDMM-Prime stochastic mapping method (mapper2.xml)
-        double typedTreeLength_0 = 0.93;
-        double typedTreeLength_1 = 1.07;
+        // Tree type statistics from BDMM-Prime stochastic mapping (TypeMappedTree, 250,000 mappings,
+        // origin 2.0 as above, i.e. including the stem)
+        double typedTreeLength_0 = 0.9705;
+        double typedTreeLength_1 = 1.0295;
         double tolerance = 5e-3;
 
         assertEquals("Type 0 edge length mismatch", typedTreeLength_0, totalTimeInType[0], tolerance);
@@ -728,10 +731,11 @@ public class MultiTypeHiddenEventsTest {
                 totalTimeInType[1] += state[1] * stepSize;
             }
         }
-        // Tree type statistics from BDMM-Prime stochastic mapping method (mapper2.xml)
-        double typedTreeLength_0 = 1.0649;
-        double typedTreeLength_1 = 0.9351;
-        double tolerance = 1e-2;
+        // Tree type statistics from BDMM-Prime stochastic mapping (TypeMappedTree, 250,000 mappings,
+        // origin 2.0 as above, i.e. including the stem)
+        double typedTreeLength_0 = 1.1674;
+        double typedTreeLength_1 = 0.8326;
+        double tolerance = 5e-3;
 
         System.out.println("Type 0 edge length = " +  totalTimeInType[0]);
         System.out.println("Type 1 edge length = " +  totalTimeInType[1]);
@@ -1098,6 +1102,158 @@ public class MultiTypeHiddenEventsTest {
                             + " does not match multi-type total result = " +  multiTypeResultTotal,
                     singleTypeResult, multiTypeResultTotal, tolerance);
         }
+    }
+
+    // π at the root must include propagation along the stem from the origin, where
+    // startTypePriorProbs applies. Reference: root-type frequencies from BDMM-Prime stochastic mapping.
+    @Test
+    public void piAtRootStemPropagationTest() {
+
+        String newick = "(t5[&type=0]:5.7,((t1[&type=1]:1,t2[&type=1]:2):1,"
+                + "(t3[&type=1]:3,t4[&type=1]:4):0.5):1.3):0.0;";
+        Tree tree = new TreeParser(newick, false, false, true, 0);
+
+        RealParameter origin = new RealParameter("8.0");
+        RealParameter startTypePriorProbs = new RealParameter("1.0 0.0");
+
+        Parameterization parameterization = new CanonicalParameterization();
+        parameterization.initByName(
+                "typeSet", new TypeSet(2),
+                "processLength", origin,
+                "birthRate", new SkylineVectorParameter(null, new RealParameter("1.2 1.2"), 2),
+                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0"), 2),
+                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.3 0.3"), 2),
+                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.1"), 2),
+                "removalProb", new SkylineVectorParameter(null, new RealParameter("1.0"), 2)
+        );
+
+        BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
+        density.initByName(
+                "parameterization", parameterization,
+                "startTypePriorProbs", startTypePriorProbs,
+                "conditionOnSurvival", false,
+                "tree", tree,
+                "typeLabel", "type",
+                "parallelize", false,
+                "useAnalyticalSingleTypeSolution", false,
+                "storeIntegrationResults", true
+        );
+        density.calculateLogP();
+
+        MultiTypeHiddenEventsIntegrator integrator = new MultiTypeHiddenEventsIntegrator(
+                parameterization, tree, density.getIntegrationResults(),
+                1e-6, 1e-6, false, false, null, new double[tree.getNodeCount()], 0.1);
+        integrator.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(), parameterization, 0.0);
+        double[] piRoot = integrator.getPiAtNode(tree.getRoot().getNr());
+
+        Randomizer.setSeed(42);
+        TypeMappedTree mappedTree = new TypeMappedTree();
+        mappedTree.initByName(
+                "bdmmDistrib", density,
+                "startTypePriorProbs", startTypePriorProbs,
+                "typeLabel", "type",
+                "untypedTree", tree,
+                "remapOnLog", true);
+
+        int nMappings = 20000;
+        int nRootType1 = 0;
+        for (int sample = 1; sample <= nMappings; sample++) {
+            mappedTree.remapForLog(sample);
+            Node node = mappedTree.getRoot();
+            while (node.getChildCount() == 1)
+                node = node.getChild(0);
+            if ((int) node.getMetaData("type") == 1)
+                nRootType1 += 1;
+        }
+        double expectedPi1 = (double) nRootType1 / nMappings;
+
+        System.out.printf("Root -> π₁=%.4f (stochastic mapping %.4f)%n", piRoot[1], expectedPi1);
+
+        assertEquals("π₁ mismatch at root", expectedPi1, piRoot[1], 0.015);
+        assertEquals("π at root not normalised", 1.0, piRoot[0] + piRoot[1], 1e-8);
+    }
+
+    // Two-tip tree used by the tests below; π trajectories are stored.
+    private MultiTypeHiddenEventsIntegrator integrateTwoTipTree(Tree tree, String originValue,
+                                                               String birthAmongDemes) {
+        RealParameter origin = new RealParameter(originValue);
+        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+
+        Parameterization parameterization = new CanonicalParameterization();
+        parameterization.initByName(
+                "typeSet", new TypeSet(2),
+                "processLength", origin,
+                "birthRate", new SkylineVectorParameter(null, new RealParameter("3.0 3.0"), 2),
+                "deathRate", new SkylineVectorParameter(null, new RealParameter("0.5 0.5"), 2),
+                "birthRateAmongDemes", new SkylineMatrixParameter(null, new RealParameter(birthAmongDemes), 2),
+                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.2 0.3"), 2),
+                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.0"), 2),
+                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 2),
+                "rhoSampling", new TimedParameter(origin, new RealParameter("0.2"), 2));
+
+        BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
+        density.initByName(
+                "parameterization", parameterization,
+                "startTypePriorProbs", startTypePriorProbs,
+                "conditionOnSurvival", false,
+                "tree", tree,
+                "typeLabel", "state",
+                "parallelize", false,
+                "useAnalyticalSingleTypeSolution", false,
+                "storeIntegrationResults", true);
+        density.calculateLogP();
+
+        MultiTypeHiddenEventsIntegrator integrator = new MultiTypeHiddenEventsIntegrator(
+                parameterization, tree, density.getIntegrationResults(),
+                1e-6, 1e-6, true, false, null, new double[tree.getNodeCount()], 0.1);
+        integrator.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(), parameterization, 0.0);
+        return integrator;
+    }
+
+    // With the root at the origin (no stem), startTypePriorProbs applies at the root node,
+    // which must still be conditioned on the data below it.
+    @Test
+    public void piIntegrationNoStemTest() {
+
+        Tree tree = new TreeParser("(t1[&state=0] : 1.0, t2[&state=1] : 1.0);", false, false, true, 0);
+        MultiTypeHiddenEventsIntegrator integrator = integrateTwoTipTree(tree, "1.0", "0.0 0.0");
+
+        double[] totalTimeInType = new double[2];
+        int steps = 400;
+        double stepSize = 1.0 / steps;
+        for (int nodeNr = 0; nodeNr < 2; nodeNr++) {
+            ContinuousOutputModel model = integrator.getPiIntegrationResultsForNode(nodeNr);
+            for (int i = 0; i < steps; i++) {
+                model.setInterpolatedTime((i + 0.5) * stepSize);
+                double[] state = model.getInterpolatedState();
+                totalTimeInType[0] += state[0] * stepSize;
+                totalTimeInType[1] += state[1] * stepSize;
+            }
+        }
+
+        // BDMM-Prime stochastic mapping (TypeMappedTree, 250,000 mappings)
+        assertEquals("Type 0 edge length mismatch", 0.9339, totalTimeInType[0], 5e-3);
+        assertEquals("Type 1 edge length mismatch", 1.0661, totalTimeInType[1], 5e-3);
+    }
+
+    // With birth among demes, the two daughter lineages can start in different types.
+    @Test
+    public void piDaughterStartBirthAmongDemesTest() {
+
+        Tree tree = new TreeParser("(t1[&state=0] : 1.0, t2[&state=1] : 1.0);", false, false, true, 0);
+        MultiTypeHiddenEventsIntegrator integrator = integrateTwoTipTree(tree, "2.0", "1.5 2.0");
+
+        // BDMM-Prime stochastic mapping (TypeMappedTree, 250,000 mappings): P(type 1) at the
+        // start of each daughter edge; the parent's own P(type 1) at the root is 0.3662
+        double[] expected = {0.3312, 0.4338};
+
+        for (int nodeNr = 0; nodeNr < 2; nodeNr++) {
+            ContinuousOutputModel model = integrator.getPiIntegrationResultsForNode(nodeNr);
+            model.setInterpolatedTime(1.0);
+            double pi1 = model.getInterpolatedState()[1];
+            assertEquals("Daughter start π₁ mismatch for node " + nodeNr, expected[nodeNr], pi1, 5e-3);
+        }
+        assertEquals("π₁ mismatch at root", 0.3662, integrator.getPiAtNode(2)[1], 5e-3);
     }
 
 }

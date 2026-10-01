@@ -12,7 +12,6 @@ import beast.base.util.Randomizer;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
 import multitypespike.distribution.BranchSpikePrior;
-import org.apache.commons.math.distribution.GammaDistributionImpl;
 
 @Description("Operator that draws and proposes new spike values on a branch directly from the prior.")
 public class TargetedSpikeOperator extends Operator {
@@ -26,15 +25,16 @@ public class TargetedSpikeOperator extends Operator {
     public final Input<Tree> treeInput = new Input<>("tree", "tree input.", Input.Validate.REQUIRED);
 
     private int nTypes;
-    final double MAX_CUM_SUM = 0.999;
 
     @Override
     public void initAndValidate() {
-        nTypes = branchSpikePriorInput.get().nTypes;
     }
 
     @Override
     public double proposal() {
+        // resolved on first use, once the spike prior has been set up
+        if (nTypes == 0) nTypes = branchSpikePriorInput.get().nTypes;
+
         final RealParameter spikes = spikesInput.get();
         final BranchSpikePrior prior = branchSpikePriorInput.get();
 
@@ -121,152 +121,19 @@ public class TargetedSpikeOperator extends Operator {
     }
 
     /**
-     * Replicates the exact joint prior calculation for a single node.
-     * Because the proposal simulates this exactly, the returned Hastings ratio perfectly
-     * cancels the prior ratio in the posterior calculation.
+     * Joint prior of the spikes on a single node, as computed by BranchSpikePrior, so that the
+     * Hastings ratio cancels the prior ratio.
      */
     private double calculateNodeLogPrior(double[] s, double[] expHidden, double[] piVals, double[] shapes, boolean hasFakeParent) {
-        if (nTypes == 1) return calculateSingleTypeNodeLogPrior(s[0], expHidden[0], shapes[0], hasFakeParent);
-        else return calculateMultiTypeNodeLogPrior(s, expHidden, piVals, shapes, hasFakeParent);
-    }
-
-    private double calculateSingleTypeNodeLogPrior(double branchSpike, double expNrHiddenEvents, double spikeShape, boolean hasFakeParent) {
-        double logP = 0.0;
-        boolean isZeroSpike = (branchSpike == 0.0);
-        GammaDistributionImpl gamma = new GammaDistributionImpl(1.0, 1.0);
-
-        if (expNrHiddenEvents > 0) {
-            double branchP = 0.0;
-            double cumsum = 0.0;
-            int k = 0;
-            double logFactorialK = 0.0;
-
-            while (cumsum < MAX_CUM_SUM || k < 5) {
-                double logpk = -expNrHiddenEvents + k * Math.log(expNrHiddenEvents) - logFactorialK;
-                cumsum += Math.exp(logpk);
-
-                int nSpikes = hasFakeParent ? k : k + 1;
-
-                if (nSpikes == 0) {
-                    if (isZeroSpike) branchP += Math.exp(logpk);
-                } else {
-                    gamma.setAlpha(spikeShape * nSpikes);
-                    gamma.setBeta(1.0 / spikeShape);
-                    double gammaLogP = gamma.logDensity(branchSpike);
-                    if (!isZeroSpike && Double.isFinite(gammaLogP)) {
-                        branchP += Math.exp(logpk + gammaLogP);
-                    }
-                }
-                k++;
-                logFactorialK += Math.log(k);
-            }
-            logP = (branchP > 0) ? Math.log(branchP) : Double.NEGATIVE_INFINITY;
-        } else {
-            if (!hasFakeParent) {
-                if (isZeroSpike) {
-                    logP = Double.NEGATIVE_INFINITY;
-                } else {
-                    gamma.setAlpha(spikeShape);
-                    gamma.setBeta(1.0 / spikeShape);
-                    logP = gamma.logDensity(branchSpike);
-                }
-            } else if (!isZeroSpike) {
-                logP = Double.NEGATIVE_INFINITY;
-            }
-        }
-        return logP;
-    }
-
-    private double calculateMultiTypeNodeLogPrior(double[] s, double[] expHidden, double[] piVals, double[] shapes, boolean hasFakeParent) {
-        double logP = 0.0;
         double[] logP0 = new double[nTypes];
         double[] logP1 = new double[nTypes];
-        GammaDistributionImpl gamma = new GammaDistributionImpl(1.0, 1.0);
-
+        double[] logProbs = new double[2];
         for (int i = 0; i < nTypes; i++) {
-            double branchSpike = s[i];
-            boolean isZeroSpike = (branchSpike == 0.0);
-            double expNrHiddenEvents = expHidden[i];
-            double spikeShape = shapes[i];
-
-            double prob0 = 0.0;
-            double prob1 = 0.0;
-
-            if (expNrHiddenEvents > 0) {
-                double cumsum = 0.0;
-                int k = 0;
-                double logFactorialK = 0.0;
-
-                while (cumsum < MAX_CUM_SUM || k < 5) {
-                    double logpk = -expNrHiddenEvents + k * Math.log(expNrHiddenEvents) - logFactorialK;
-                    double pk = Math.exp(logpk);
-                    cumsum += pk;
-
-                    if (k == 0) {
-                        if (isZeroSpike) prob0 += pk;
-                    } else if (!isZeroSpike) {
-                        gamma.setAlpha(spikeShape * k);
-                        gamma.setBeta(1.0 / spikeShape);
-                        double gammaLogP = gamma.logDensity(branchSpike);
-                        if (Double.isFinite(gammaLogP)) prob0 += pk * Math.exp(gammaLogP);
-                    }
-
-                    int nSpikes = k + 1;
-                    if (!isZeroSpike) {
-                        gamma.setAlpha(spikeShape * nSpikes);
-                        gamma.setBeta(1.0 / spikeShape);
-                        double gammaLogP = gamma.logDensity(branchSpike);
-                        if (Double.isFinite(gammaLogP)) prob1 += pk * Math.exp(gammaLogP);
-                    }
-                    k++;
-                    logFactorialK += Math.log(k);
-                }
-            } else {
-                if (isZeroSpike) prob0 += 1.0;
-                if (!isZeroSpike) {
-                    gamma.setAlpha(spikeShape);
-                    gamma.setBeta(1.0 / spikeShape);
-                    double gammaLogP = gamma.logDensity(branchSpike);
-                    if (Double.isFinite(gammaLogP)) prob1 += Math.exp(gammaLogP);
-                }
-            }
-            logP0[i] = (prob0 > 0) ? Math.log(prob0) : Double.NEGATIVE_INFINITY;
-            logP1[i] = (prob1 > 0) ? Math.log(prob1) : Double.NEGATIVE_INFINITY;
+            BranchSpikePrior.branchSpikeLogProbs(s[i], expHidden[i], shapes[i], logProbs);
+            logP0[i] = logProbs[0];
+            logP1[i] = logProbs[1];
         }
-
-        if (hasFakeParent) {
-            for (int i = 0; i < nTypes; i++) logP += logP0[i];
-        } else {
-            double maxLogTerm = Double.NEGATIVE_INFINITY;
-            double[] logTerms = new double[nTypes];
-
-            for (int i = 0; i < nTypes; i++) {
-                double pi = piVals[i];
-                if (pi > 0) {
-                    double term = Math.log(pi) + logP1[i];
-                    for (int j = 0; j < nTypes; j++) {
-                        if (j != i) term += logP0[j];
-                    }
-                    logTerms[i] = term;
-                    if (term > maxLogTerm) maxLogTerm = term;
-                } else {
-                    logTerms[i] = Double.NEGATIVE_INFINITY;
-                }
-            }
-
-            if (maxLogTerm == Double.NEGATIVE_INFINITY) {
-                logP += Double.NEGATIVE_INFINITY;
-            } else {
-                double sumExp = 0.0;
-                for (int i = 0; i < nTypes; i++) {
-                    if (logTerms[i] > Double.NEGATIVE_INFINITY) {
-                        sumExp += Math.exp(logTerms[i] - maxLogTerm);
-                    }
-                }
-                logP += maxLogTerm + Math.log(sumExp);
-            }
-        }
-        return logP;
+        return BranchSpikePrior.nodeLogPrior(logP0, logP1, piVals, 0, hasFakeParent);
     }
 
     @Override

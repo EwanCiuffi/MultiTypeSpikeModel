@@ -37,6 +37,10 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     public int nTypes, nodeCount;
     int spikeMeanDim, indicatorDim;
 
+    // Per-node spike sums and relaxed rates, rebuilt lazily after any clock input changes
+    private double[] spikeSums, relaxedRates;
+    private volatile boolean cacheValid = false;
+
 
     @Override
     public void initAndValidate() {
@@ -82,6 +86,26 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
             if (nTypes > 1 && indicatorDim != 1 && indicatorDim != nTypes) {
                 throw new IllegalArgumentException("For multi-type models, 'indicator' must have dimension 1 (shared) or nTypes (" + nTypes + ").");
             }
+        }
+
+        spikeSums = new double[nodeCount];
+        relaxedRates = new double[nodeCount];
+        cacheValid = false;
+    }
+
+    private void updateCache() {
+        synchronized (this) {
+            if (cacheValid) return;
+            for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
+                double spikeSum = 0;
+                for (int i = 0; i < nTypes; i++) {
+                    if (getIndicator(i))
+                        spikeSum += spikesInput.get().getValue(nodeNr * nTypes + i) * getSpikeMean(i);
+                }
+                spikeSums[nodeNr] = spikeSum;
+                relaxedRates[nodeNr] = getRawRelaxedRate(nodeNr);
+            }
+            cacheValid = true;
         }
     }
 
@@ -132,17 +156,8 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
         if (node.isRoot() || node.isDirectAncestor()) return 0;
 
-        // Compute spike size
-        double spikeSum = 0;
-        for (int i = 0; i < nTypes; i++) {
-            // Only add to the sum if this specific type indicator is on
-            if (getIndicator(i)) {
-                double spikeMean = getSpikeMean(i);
-                double branchSpike = spikesInput.get().getValue(node.getNr() * nTypes + i);
-                spikeSum += branchSpike * spikeMean;
-            }
-        }
-        return spikeSum;
+        if (!cacheValid) updateCache();
+        return spikeSums[node.getNr()];
     }
 
 
@@ -164,7 +179,8 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
         double spikeSize = getSpikeSize(node);
 
-        double effectiveRelaxedRate = getRawRelaxedRate(node);
+        if (!cacheValid) updateCache();
+        double effectiveRelaxedRate = relaxedRates[node.getNr()];
 
         // Effective rate takes into account spike and base rate
         double branchDistance = node.getLength() * effectiveRelaxedRate + spikeSize;
@@ -177,11 +193,11 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
      * This is the value that getRateForBranch would use for the multiplicative
      * contribution to branch distance (i.e. baseRate * relaxed_rate_multiplier).
      */
-    private double getRawRelaxedRate(Node node) {
+    private double getRawRelaxedRate(int nodeNr) {
         double baseRate = meanRateInput.get().getArrayValue();
         if (ratesInput.get() == null) return baseRate;
         if (relaxedInput.get() == null || relaxedInput.get().getValue()) {
-            return getRateMultiplier(node) * baseRate;
+            return getRateMultiplier(nodeNr) * baseRate;
         }
         return baseRate;
     }
@@ -193,8 +209,8 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
      * exp(rateSD * z - rateSD^2 / 2) to maintain a mean of 1 while decoupling
      * the parameters.
      */
-    private double getRateMultiplier(Node node) {
-        double z = ratesInput.get().getValue(node.getNr());
+    private double getRateMultiplier(int nodeNr) {
+        double z = ratesInput.get().getValue(nodeNr);
         if (!nonCenteredInput.get()) {
             return z;
         }
@@ -206,29 +222,18 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
     @Override
     protected boolean requiresRecalculation() {
-        if (InputUtil.isDirty(spikesInput) || InputUtil.isDirty(spikeMeanInput) ||
-                InputUtil.isDirty(ratesInput) || InputUtil.isDirty(meanRateInput)) {
-            return true;
-        }
-        if (relaxedInput.get() != null && InputUtil.isDirty(relaxedInput)) {
-            return true;
-        }
-        if (indicatorInput.get() != null && InputUtil.isDirty(indicatorInput)) {
-            return true;
-        }
-        if (nonCenteredInput.get() && rateSDInput.get() != null && InputUtil.isDirty(rateSDInput)) {
-            return true;
-        }
-        return false;
-    }
-
-    @Override
-    public void store() {
-        super.store();
+        boolean dirty = InputUtil.isDirty(spikesInput) || InputUtil.isDirty(spikeMeanInput) ||
+                InputUtil.isDirty(ratesInput) || InputUtil.isDirty(meanRateInput) ||
+                (relaxedInput.get() != null && InputUtil.isDirty(relaxedInput)) ||
+                (indicatorInput.get() != null && InputUtil.isDirty(indicatorInput)) ||
+                (nonCenteredInput.get() && rateSDInput.get() != null && InputUtil.isDirty(rateSDInput));
+        if (dirty) cacheValid = false;
+        return dirty;
     }
 
     @Override
     public void restore() {
+        cacheValid = false;
         super.restore();
     }
 

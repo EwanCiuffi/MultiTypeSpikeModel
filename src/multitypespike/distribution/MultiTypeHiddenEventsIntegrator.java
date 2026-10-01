@@ -23,6 +23,8 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
     private final double[][][] M, b_ij;
 
     private final double[][] storedResults;
+    // π at the start (top) of each edge; differs from the parent's π when births among demes occur
+    private final double[][] edgeStartPi;
 
     private final int nTypes;
     private final double[] intervalEndTimes;
@@ -56,6 +58,7 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         this.intervalEndTimes = parameterization.getIntervalEndTimes();
 
         this.storedResults = new double[nodeCount][2 * nTypes];
+        this.edgeStartPi = new double[nodeCount][nTypes];
 
         integrationMinStep = parameterization.getTotalProcessLength() * 1e-100;
         integrationMaxStep = parameterization.getTotalProcessLength() / 10;
@@ -73,19 +76,31 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
     }
 
 
+    /**
+     * π/hidden-events ODE along one edge. Instances are reused across edges by a single thread.
+     */
     private final class BranchIntegrator implements FirstOrderDifferentialEquations {
 
         private int interval;
-        private final int nodeNr;
+        private int nodeNr;
+        private double edgeStart, edgeEnd;
         private final double[] p0geBuffer;
         private final double[] inv_ge;
-        private static final double EPS = 1e-3; // Small value to avoid division by zero
+        private final FirstOrderIntegrator integrator;
+        private static final double EPS = 1e-3; // ge floor relative to the largest ge, avoids division by zero
 
-        BranchIntegrator(int interval, int nodeNr) {
-            this.interval   = interval;
-            this.nodeNr     = nodeNr;
+        BranchIntegrator() {
             this.p0geBuffer = new double[2 * nTypes];
             this.inv_ge     = new double[nTypes];
+            this.integrator = new DormandPrince54Integrator(
+                    integrationMinStep, integrationMaxStep,
+                    absoluteTolerance, relativeTolerance);
+        }
+
+        void setEdge(int nodeNr, double edgeStart, double edgeEnd) {
+            this.nodeNr = nodeNr;
+            this.edgeStart = edgeStart;
+            this.edgeEnd = edgeEnd;
         }
 
         void setInterval(int interval) { this.interval = interval; }
@@ -95,8 +110,9 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         @Override
         public void computeDerivatives(double t, double[] y, double[] yDot) {
 
+            // The step size initialisation may probe beyond the edge, where the p0/ge interpolant is invalid
             ContinuousOutputModel com = p0geComArray[nodeNr];
-            com.setInterpolatedTime(t);
+            com.setInterpolatedTime(Math.min(Math.max(t, edgeStart), edgeEnd));
             double[] state = com.getInterpolatedState();
             System.arraycopy(state, 0, p0geBuffer, 0, 2 * nTypes);
 
@@ -104,9 +120,12 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
             final double[][] lambda_ij = b_ij[interval];
             final double[][] migRate = M[interval];
 
-            // Precompute inverses
+            // Precompute inverses; ge is only known up to a common scale factor
+            double geMax = 0.0;
+            for (int k = 0; k < nTypes; k++) geMax = Math.max(geMax, p0geBuffer[nTypes + k]);
+            final double geFloor = geMax > 0.0 ? EPS * geMax : EPS;
             for (int k = 0; k < nTypes; k++) {
-                inv_ge[k] = 1.0 / Math.max(p0geBuffer[nTypes + k], EPS);
+                inv_ge[k] = 1.0 / Math.max(p0geBuffer[nTypes + k], geFloor);
             }
 
             Arrays.fill(yDot, 0.0);
@@ -136,18 +155,15 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         void integrate(double tStart, double tEnd, double[] state,
                        ContinuousOutputModel segment) {
 
-            FirstOrderIntegrator integrator = new DormandPrince54Integrator(
-                    integrationMinStep, integrationMaxStep,
-                    absoluteTolerance, relativeTolerance);
-
+            integrator.clearStepHandlers();
             if (segment != null) integrator.addStepHandler(segment);
 
             integrator.integrate(this, tStart, state, tEnd, state);
         }
     }
 
-    public void integrateAlongEdge(Node node, double tStart, Parameterization parameterization,
-                                   double finalSampleOffset, double[] initialState) {
+    private void integrateAlongEdge(Node node, double tStart, Parameterization parameterization,
+                                    double finalSampleOffset, double[] initialState, BranchIntegrator system) {
 
         final int nodeNr  = node.getNr();
         final double tEnd = parameterization.getNodeTime(node, finalSampleOffset);
@@ -158,7 +174,7 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
 
         double[] state = initialState.clone();
 
-        BranchIntegrator system = new BranchIntegrator(thisInterval, nodeNr);
+        system.setEdge(nodeNr, tStart, tEnd);
 
         ContinuousOutputModel fullModel = storePiTrajectories ? new ContinuousOutputModel() : null;
 
@@ -200,23 +216,26 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
     }
 
 
-    public void integrateAtNode(Node node,
-                                double parentTime,
-                                Parameterization parameterization,
-                                double finalSampleOffset) {
+    private void integrateAtNode(Node node,
+                                 double parentTime,
+                                 Parameterization parameterization,
+                                 double finalSampleOffset,
+                                 BranchIntegrator system) {
 
         final double nodeTime = parameterization.getNodeTime(node, finalSampleOffset);
 
         if (!node.isRoot() && !node.isDirectAncestor()) {
-            final int parentNr = node.getParent().getNr();
-            double[] state = getInitialConditionsAtNode(parentNr);
-            integrateAlongEdge(node, parentTime, parameterization, finalSampleOffset, state);
+            double[] state = new double[2 * nTypes];
+            System.arraycopy(edgeStartPi[node.getNr()], 0, state, 0, nTypes);
+            integrateAlongEdge(node, parentTime, parameterization, finalSampleOffset, state, system);
         }
 
         if (node.isLeaf()) return;
 
         Node child1 = node.getChild(0);
         Node child2 = node.getChild(1);
+
+        setChildEdgeStartPi(node, nodeTime, parameterization);
 
         Node firstChild  = child1;
         Node secondChild = child2;
@@ -237,16 +256,17 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
 
             // Submit asynchronously with CompletableFuture
             CompletableFuture<Void> secondFuture = CompletableFuture.runAsync(
-                    () -> integrateAtNode(second, nodeTime, parameterization, finalSampleOffset), pool);
+                    () -> integrateAtNode(second, nodeTime, parameterization, finalSampleOffset,
+                            new BranchIntegrator()), pool);
 
             // Process first child on current thread
-            integrateAtNode(firstChild, nodeTime, parameterization, finalSampleOffset);
+            integrateAtNode(firstChild, nodeTime, parameterization, finalSampleOffset, system);
 
             // Wait for second child (non-blocking join)
             secondFuture.join();
         } else {
-            integrateAtNode(firstChild,  nodeTime, parameterization, finalSampleOffset);
-            integrateAtNode(secondChild, nodeTime, parameterization, finalSampleOffset);
+            integrateAtNode(firstChild,  nodeTime, parameterization, finalSampleOffset, system);
+            integrateAtNode(secondChild, nodeTime, parameterization, finalSampleOffset, system);
         }
     }
 
@@ -261,15 +281,27 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
         int  rootNr = root.getNr();
 
         double rootTime = parameterization.getNodeTime(root, finalSampleOffset);
+        BranchIntegrator system = new BranchIntegrator();
 
-        // Set initial conditions at root
-        double[] state = getInitialConditionsAtRoot(startTypePriorProbs, rootTime, rootNr);
+        double[] state;
+        if (Utils.lessThanWithPrecision(0.0, rootTime)) {
+            // startTypePriorProbs applies at the origin (time 0): condition π there on the
+            // subtree likelihood, then propagate it along the stem to the root.
+            double[] geAtOrigin = Arrays.copyOfRange(getP0Ge(rootNr, 0.0), nTypes, 2 * nTypes);
+            state = getInitialConditions(startTypePriorProbs, geAtOrigin);
+            integrateAlongEdge(root, 0.0, parameterization, finalSampleOffset, state, system);
+            state = getInitialConditionsAtNode(rootNr);
+        } else {
+            // No stem (root at the origin, or conditioning on the root): the prior applies at the root
+            state = getInitialConditions(startTypePriorProbs, getGeAtNode(root, rootTime, parameterization));
+        }
+        // No spikes on the stem: hidden events at the root are zero
         storeResultsAtNode(state, rootNr);
 
         updateParallelizationThreshold();
 
         // Start pre-order traversal integration from root
-        integrateAtNode(root, rootTime, parameterization, finalSampleOffset);
+        integrateAtNode(root, rootTime, parameterization, finalSampleOffset, system);
     }
 
     // Public accessors
@@ -320,13 +352,12 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
 
     // Initial conditions helpers
 
-    private double[] getInitialConditionsAtRoot(double[] startTypePriorProbs, double rootTime, int rootNr) {
+    private double[] getInitialConditions(double[] startTypePriorProbs, double[] ge) {
         double[] state    = new double[2 * nTypes];
         double   total    = 0.0;
-        double[] p0geInit = getP0Ge(rootNr, rootTime);
 
         for (int i = 0; i < nTypes; i++) {
-            state[i] = p0geInit[i + nTypes] * startTypePriorProbs[i];
+            state[i] = ge[i] * startTypePriorProbs[i];
             total += state[i];
         }
         for (int i = 0; i < nTypes; i++) {
@@ -334,6 +365,93 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
             state[nTypes + i] = 0.0;
         }
         return state;
+    }
+
+    /**
+     * ge (up to a common factor) just above a branching node, combining its two child edges
+     * as in BDMM-Prime. For a sampled-ancestor node only the continuing lineage is used.
+     */
+    private double[] getGeAtNode(Node node, double nodeTime, Parameterization parameterization) {
+        double[] ge = new double[nTypes];
+
+        if (node.isFake()) {
+            Node child = node.getChild(0).isDirectAncestor() ? node.getChild(1) : node.getChild(0);
+            System.arraycopy(getP0Ge(child.getNr(), nodeTime), nTypes, ge, 0, nTypes);
+            return ge;
+        }
+
+        double[] g1 = getP0Ge(node.getChild(0).getNr(), nodeTime);
+        double[] g2 = getP0Ge(node.getChild(1).getNr(), nodeTime);
+        int interval = parameterization.getIntervalIndex(nodeTime);
+
+        for (int k = 0; k < nTypes; k++) {
+            ge[k] = b[interval][k] * g1[nTypes + k] * g2[nTypes + k];
+            for (int j = 0; j < nTypes; j++) {
+                if (j == k) continue;
+                ge[k] += 0.5 * b_ij[interval][k][j]
+                        * (g1[nTypes + k] * g2[nTypes + j] + g1[nTypes + j] * g2[nTypes + k]);
+            }
+        }
+        return ge;
+    }
+
+    /**
+     * Sets π at the start of both child edges of a node. At a birth among demes one daughter
+     * starts in a different type from the parent, so each daughter's type distribution is
+     * obtained by weighting the parent's π with the probability of each pair of daughter types.
+     */
+    private void setChildEdgeStartPi(Node node, double nodeTime, Parameterization parameterization) {
+        final double[] piParent = storedResults[node.getNr()];
+        final int nr1 = node.getChild(0).getNr();
+        final int nr2 = node.getChild(1).getNr();
+
+        if (node.isFake()) {
+            System.arraycopy(piParent, 0, edgeStartPi[nr1], 0, nTypes);
+            System.arraycopy(piParent, 0, edgeStartPi[nr2], 0, nTypes);
+            return;
+        }
+
+        double[] g1 = getP0Ge(nr1, nodeTime);
+        double[] g2 = getP0Ge(nr2, nodeTime);
+        int interval = parameterization.getIntervalIndex(nodeTime);
+
+        double[] pi1 = new double[nTypes];
+        double[] pi2 = new double[nTypes];
+
+        for (int k = 0; k < nTypes; k++) {
+            if (piParent[k] <= 0.0) continue;
+
+            // Daughter types (k, k) by birth within type k; (k, j) or (j, k) by birth among demes
+            double within = b[interval][k] * g1[nTypes + k] * g2[nTypes + k];
+            double total = within;
+            double[] kj = new double[nTypes], jk = new double[nTypes];
+            for (int j = 0; j < nTypes; j++) {
+                if (j == k) continue;
+                kj[j] = 0.5 * b_ij[interval][k][j] * g1[nTypes + k] * g2[nTypes + j];
+                jk[j] = 0.5 * b_ij[interval][k][j] * g1[nTypes + j] * g2[nTypes + k];
+                total += kj[j] + jk[j];
+            }
+
+            if (!(total > 0.0)) {
+                pi1[k] += piParent[k];
+                pi2[k] += piParent[k];
+                continue;
+            }
+
+            double w = piParent[k] / total;
+            pi1[k] += w * within;
+            pi2[k] += w * within;
+            for (int j = 0; j < nTypes; j++) {
+                if (j == k) continue;
+                pi1[k] += w * kj[j];
+                pi2[j] += w * kj[j];
+                pi1[j] += w * jk[j];
+                pi2[k] += w * jk[j];
+            }
+        }
+
+        System.arraycopy(pi1, 0, edgeStartPi[nr1], 0, nTypes);
+        System.arraycopy(pi2, 0, edgeStartPi[nr2], 0, nTypes);
     }
 
     public double[] getInitialConditionsAtNode(int nodeNr) {
@@ -383,7 +501,9 @@ public class MultiTypeHiddenEventsIntegrator implements Loggable {
             state[nTypes + i] = 0.0; // hidden events start at zero
         }
 
-        BranchIntegrator system = new BranchIntegrator(parameterization.getIntervalIndex(startTime), rootNr);
+        BranchIntegrator system = new BranchIntegrator();
+        system.setEdge(rootNr, startTime, endTime);
+        system.setInterval(parameterization.getIntervalIndex(startTime));
 
         // Optional: store continuous π trajectories
         ContinuousOutputModel com = storePiTrajectories ? new ContinuousOutputModel() : null;

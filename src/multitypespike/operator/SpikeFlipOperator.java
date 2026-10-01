@@ -10,7 +10,7 @@ import beast.base.inference.Operator;
 import beast.base.inference.StateNode;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.util.Randomizer;
-import org.apache.commons.math.distribution.GammaDistributionImpl;
+import multitypespike.distribution.BranchSpikePrior;
 
 @Description("Flips a spike from zero to non zero, or vice versa")
 public class SpikeFlipOperator extends Operator {
@@ -22,8 +22,11 @@ public class SpikeFlipOperator extends Operator {
             "gamma distribution of the spikes.", Input.Validate.REQUIRED);
 
     final public Input<Parameterization> parameterizationInput = new Input<>("parameterization",
-            "BDMM-prime parameterization object (see BDMM-prime package for available parameterizations)",
-            Input.Validate.REQUIRED);
+            "BDMM-Prime parameterization, giving the number of types.");
+
+    final public Input<BranchSpikePrior> branchSpikePriorInput = new Input<>("branchSpikePrior",
+            "Spike prior, giving the number of types when no parameterization is provided.",
+            Input.Validate.XOR, parameterizationInput);
 
     final public Input<Boolean> flipAcrossTypesInput = new Input<>("flipAcrossTypes",
             "if true, flip all spikes for a node across types; if false, flip one spike (default false)", false);
@@ -35,9 +38,14 @@ public class SpikeFlipOperator extends Operator {
 
     @Override
     public void initAndValidate() {
-        nTypes = parameterizationInput.get().getNTypes();
-        nodeCount = spikesInput.get().getDimension() / nTypes;
         flipAcrossTypes = flipAcrossTypesInput.get();
+    }
+
+    // The number of types is resolved on first use, once the spike prior has been set up
+    private void resolveTypes() {
+        nTypes = parameterizationInput.get() != null ? parameterizationInput.get().getNTypes()
+                : branchSpikePriorInput.get().nTypes;
+        nodeCount = spikesInput.get().getDimension() / nTypes;
 
         int spikeShapeDim = spikeShapeInput.get().getDimension();
         if (nTypes == 1 && spikeShapeDim > 1) {
@@ -51,6 +59,7 @@ public class SpikeFlipOperator extends Operator {
 
     @Override
     public double proposal() {
+        if (nTypes == 0) resolveTypes();
 
         final RealParameter spikes = spikesInput.get();
 
@@ -77,8 +86,7 @@ public class SpikeFlipOperator extends Operator {
                 spikes.setValue(index, sNew);
 
                 // logHR = log(pRev) - log(pFwd) = 0 - logDensity(sNew)
-                GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
-                return -gamma.logDensity(sNew);
+                return -BranchSpikePrior.logSpikeDensity(sNew, 1, spikeShape);
 
             } else {
                 // Death: sOld -> 0
@@ -86,8 +94,7 @@ public class SpikeFlipOperator extends Operator {
                 spikes.setValue(index, 0.0);
 
                 // logHR = log(pRev) - log(pFwd) = logDensity(sOld) - 0
-                GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
-                return gamma.logDensity(sOld);
+                return BranchSpikePrior.logSpikeDensity(sOld, 1, spikeShape);
             }
         }
 
@@ -118,23 +125,21 @@ public class SpikeFlipOperator extends Operator {
             // Birth: draw new spike values from Gamma(spikeShape, 1/spikeShape)
             for (int i = 0; i < nTypes; i++) {
                 double spikeShape = getSpikeShape(i);
-                GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
 
                 // beta = spikeShape instead of 1/spikeShape due to different parameterisation of the Gamma distribution
                 double sNew = Randomizer.nextGamma(spikeShape, spikeShape);
 
                 if (sNew < 1e-9) sNew = 1e-9;
                 spikes.setValue(start + i, sNew);
-                logHR -= gamma.logDensity(sNew);
+                logHR -= BranchSpikePrior.logSpikeDensity(sNew, 1, spikeShape);
             }
         } else {
             // Death: set all spikes to zero
             for (int i = 0; i < nTypes; i++) {
                 double spikeShape = getSpikeShape(i);
-                GammaDistributionImpl gamma = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
                 double sOld = spikes.getValue(start + i);
                 spikes.setValue(start + i, 0.0);
-                logHR += gamma.logDensity(sOld);
+                logHR += BranchSpikePrior.logSpikeDensity(sOld, 1, spikeShape);
             }
         }
 

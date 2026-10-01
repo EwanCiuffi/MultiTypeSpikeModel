@@ -1,12 +1,11 @@
 <beast version='2.0'
        namespace='beast.app.beauti:beast.pkgmgmt:beast.base.core:beast.base.inference:beast.base.evolution.branchratemodel:beast.base.evolution.speciation:beast.base.evolution.tree.coalescent:beast.base.util:beast.base.math:beast.evolution.nuc:beast.base.evolution.operator:beast.base.inference.operator:beast.base.evolution.sitemodel:beast.base.evolution.substitutionmodel:beast.base.evolution.likelihood:beast.evolution:beast.base.math.distributions:orc.operators:orc.ner'>
 
-
     <mergewith point='clockModelTemplates'>
 
-        <!-- Multi-type spike relaxed clock model -->
-
-        <subtemplate id='MultiTypeSpikeClock (select BDMM-Prime tree prior first)' class='multitypespike.clockmodel.PunctuatedClockModel'
+        <!-- Relaxed clock with type-dependent spikes of change at branching events.
+             Uses the BDMM-Prime tree prior of the same partition. -->
+        <subtemplate id='MultiTypeSpikeClock (needs BDMM-Prime)' class='multitypespike.clockmodel.PunctuatedClockModel'
                      mainid='MultiTypeSpikeClock.c:$(n)'
                      suppressInputs='
                      multitypespike.clockmodel.PunctuatedClockModel.tree,
@@ -15,99 +14,74 @@
                      multitypespike.clockmodel.PunctuatedClockModel.rateSD,
                      multitypespike.clockmodel.PunctuatedClockModel.noSpikeOnDatedTips,
                      multitypespike.distribution.BranchSpikePrior.tree,
+                     multitypespike.distribution.BranchSpikePrior.spikes,
+                     multitypespike.distribution.BranchSpikePrior.bdmDistr,
+                     multitypespike.distribution.BranchSpikePrior.parameterization,
+                     multitypespike.distribution.BranchSpikePrior.startTypePriorProbs,
+                     multitypespike.distribution.BranchSpikePrior.finalSampleOffset,
                      multitypespike.distribution.BranchSpikePrior.useAnalyticalSingleTypeSolution,
                      multitypespike.distribution.BranchSpikePrior.relTolerance,
                      multitypespike.distribution.BranchSpikePrior.absTolerance,
                      multitypespike.distribution.BranchSpikePrior.parallelize,
                      multitypespike.distribution.BranchSpikePrior.parallelizationFactor,
-                     multitypespike.distribution.BranchSpikePrior.parameterization,
-                     multitypespike.distribution.BranchSpikePrior.bdmDistr,
-                     multitypespike.distribution.BranchSpikePrior.startTypePriorProbs,
-                     multitypespike.distribution.BranchSpikePrior.finalSampleOffset,
-                     multitypespike.logger.spikeLogger.clockModel,
+                     multitypespike.logger.SpikeLogger.clock,
                      multitypespike.logger.HiddenEventsLogger.branchSpikePrior,
                      multitypespike.logger.HiddenEventsLogger.indicator'
-            hmc='MultiTypeSpikeClock/clock.rate/=StrictClock/clock.rate,
-                 MTSMclockRate/index/=Priors/ClockPrior/'>
+                     hmc='MultiTypeSpikeClock/clock.rate/=StrictClock/clock.rate,
+                          MTSMclockRate/index/=Priors/ClockPrior/'>
             <![CDATA[
 
-            <!-- No lower bound: centered mode treats this as a rate multiplier (kept positive by its
-                 LogNormal prior); non-centered mode stores unbounded Normal(0,1) deviates instead. -->
-            <parameter id="MTSMbranchRates.c:$(n)" spec="parameter.RealParameter" name="stateNode" dimension="1">1</parameter>
-            <parameter id="MTSMclockSD.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0">0.5</parameter>
-
-            <parameter id="MTSMlatentSpikes.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0" dimension="1">1</parameter>
-
-            <parameter id="MTSMspikeShape.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0.2">2</parameter>
-
-            <parameter id="MTSMspikeMean.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0">0.01</parameter>
-
-            <!-- Hierarchical prior for spikeMean: its LogNormal prior below uses this as its M. -->
-            <parameter id="MTSMspikeMeanPriorMean.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0" estimate="false">0.01</parameter>
-
+            <!-- Parameters. branchRates has no lower bound: with nonCentered="true" it holds N(0,1) deviates. -->
             <parameter id="MTSMclockRate.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0">1</parameter>
-
+            <parameter id="MTSMclockSD.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0">0.5</parameter>
+            <parameter id="MTSMbranchRates.c:$(n)" spec="parameter.RealParameter" name="stateNode" dimension="1">1</parameter>
+            <parameter id="MTSMspikeMean.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0">0.01</parameter>
+            <parameter id="MTSMspikeMeanPriorMean.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0" estimate="false">0.01</parameter>
+            <parameter id="MTSMspikeShape.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0.2">2</parameter>
+            <parameter id="MTSMlatentSpikes.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0" dimension="1">1</parameter>
             <parameter id="MTSMindicator.c:$(n)" spec="parameter.BooleanParameter" name="stateNode" estimate="false">1</parameter>
 
-            <!-- rateSD is always wired to MTSMclockSD.c:$(n); only used when nonCentered="true". -->
+            <!-- Clock model -->
             <branchRateModel id="MultiTypeSpikeClock.c:$(n)" spec="multitypespike.clockmodel.PunctuatedClockModel"
-                    indicator="@MTSMindicator.c:$(n)"
-                    clock.rate="@MTSMclockRate.c:$(n)"
-                    tree="@Tree.t:$(n)"
-                    spikes="@MTSMlatentSpikes.c:$(n)"
-                    spikeMean="@MTSMspikeMean.c:$(n)"
-                    rates="@MTSMbranchRates.c:$(n)"
-                    rateSD="@MTSMclockSD.c:$(n)"
-                    relaxed="true">
-            </branchRateModel>
+                             tree="@Tree.t:$(n)" clock.rate="@MTSMclockRate.c:$(n)" rates="@MTSMbranchRates.c:$(n)"
+                             rateSD="@MTSMclockSD.c:$(n)" spikes="@MTSMlatentSpikes.c:$(n)" spikeMean="@MTSMspikeMean.c:$(n)"
+                             indicator="@MTSMindicator.c:$(n)" relaxed="true"/>
 
-            <!-- Needs BDMM-Prime's own parameterization/bdmDistr/startTypePriorProbs for this partition. -->
-            <prior id="MTSMbranchSpikePrior.c:$(n)" name="distribution"
-                   spec="multitypespike.distribution.BranchSpikePrior"
-                   spikes="@MTSMlatentSpikes.c:$(n)"
-                   tree="@Tree.t:$(n)"
-                   spikeShape="@MTSMspikeShape.c:$(n)"
-                   parameterization="@CanonicalBDMMPrimeParameterization.t:$(n)"
-                   bdmDistr="@BDMMPrime.t:$(n)"
-                   startTypePriorProbs="@startTypePriorProbs.t:$(n)"/>
+            <!-- Spike prior; linked to the BDMM-Prime tree prior by the bdmDistr connector below -->
+            <prior id="MTSMbranchSpikePrior.c:$(n)" name="distribution" spec="multitypespike.distribution.BranchSpikePrior"
+                   tree="@Tree.t:$(n)" spikes="@MTSMlatentSpikes.c:$(n)" spikeShape="@MTSMspikeShape.c:$(n)"/>
 
+            <!-- Priors -->
             <prior id="MTSMclockRatePrior.c:$(n)" name="distribution" x="@MTSMclockRate.c:$(n)">
                 <Gamma name="distr">
                     <parameter name="alpha" value="10" estimate="false" lower="0"/>
                     <parameter name="beta" value="0.01" estimate="false" lower="0"/>
                 </Gamma>
             </prior>
-
             <prior id="MTSMclockSDPrior.c:$(n)" name="distribution" x="@MTSMclockSD.c:$(n)">
                 <Gamma name="distr">
                     <parameter name="alpha" value="5" estimate="false" lower="0"/>
                     <parameter name="beta" value="0.05" estimate="false" lower="0"/>
                 </Gamma>
             </prior>
-
-            <!-- Two mutually-exclusive priors on branchRates - exactly one is connected below, gated on
-                 the nonCentered checkbox. M is fixed at 1, not hyperprior-able: branchRates is a rate
-                 multiplier and its mean must stay 1 for identifiability against clock.rate. -->
+            <!-- Exactly one branch-rate prior is used, depending on nonCentered. The centred mean stays 1
+                 for identifiability against the clock rate. -->
             <prior id="MTSMbranchRatePriorCentered.c:$(n)" name="distribution" x="@MTSMbranchRates.c:$(n)">
-                <LogNormal meanInRealSpace="true" name="distr" M="1" S="@MTSMclockSD.c:$(n)"/>
+                <LogNormal name="distr" meanInRealSpace="true" M="1" S="@MTSMclockSD.c:$(n)"/>
             </prior>
-
             <prior id="MTSMbranchRatePriorNonCentered.c:$(n)" name="distribution" x="@MTSMbranchRates.c:$(n)">
                 <Normal name="distr" mean="0" sigma="1"/>
             </prior>
-
             <prior id="MTSMspikeMeanPrior.c:$(n)" name="distribution" x="@MTSMspikeMean.c:$(n)">
                 <LogNormal name="distr" meanInRealSpace="true" M="@MTSMspikeMeanPriorMean.c:$(n)">
                     <parameter name="S" value="0.6" estimate="false" lower="0"/>
                 </LogNormal>
             </prior>
-
             <prior id="MTSMspikeMeanPriorMeanPrior.c:$(n)" name="distribution" x="@MTSMspikeMeanPriorMean.c:$(n)">
                 <Exponential name="distr">
                     <parameter name="mean" value="0.01" estimate="false" lower="0"/>
                 </Exponential>
             </prior>
-
             <prior id="MTSMspikeShapePrior.c:$(n)" name="distribution" x="@MTSMspikeShape.c:$(n)">
                 <LogNormal name="distr" meanInRealSpace="true">
                     <parameter name="M" value="2" estimate="false" lower="0"/>
@@ -115,32 +89,27 @@
                 </LogNormal>
             </prior>
 
-            <!-- multitypespike operators -->
+            <!-- Spike operators -->
             <operator id="MTSMSpikeFlipOperator.c:$(n)" spec="multitypespike.operator.SpikeFlipOperator"
                       spikes="@MTSMlatentSpikes.c:$(n)" spikeShape="@MTSMspikeShape.c:$(n)"
-                      parameterization="@CanonicalBDMMPrimeParameterization.t:$(n)" weight="30.0"/>
-
-            <operator id="MTSMSpikeUpRateDown.c:$(n)" spec="multitypespike.operator.SpikeUpDownOperator"
-                      parameter="@MTSMbranchRates.c:$(n)" spikes="@MTSMlatentSpikes.c:$(n)"
-                      parameterization="@CanonicalBDMMPrimeParameterization.t:$(n)"
-                      scaleFactor="0.1" weight="20.0"/>
-
+                      branchSpikePrior="@MTSMbranchSpikePrior.c:$(n)" weight="30.0"/>
             <operator id="MTSMTargetedSpikeOperator.c:$(n)" spec="multitypespike.operator.TargetedSpikeOperator"
                       spikes="@MTSMlatentSpikes.c:$(n)" branchSpikePrior="@MTSMbranchSpikePrior.c:$(n)"
                       tree="@Tree.t:$(n)" weight="10.0"/>
+            <!-- Assumes positive rate multipliers, so only used when nonCentered="false" -->
+            <operator id="MTSMSpikeUpRateDown.c:$(n)" spec="multitypespike.operator.SpikeUpDownOperator"
+                      parameter="@MTSMbranchRates.c:$(n)" spikes="@MTSMlatentSpikes.c:$(n)" scaleFactor="0.1" weight="20.0"/>
+            <operator id="MTSMlatentSpikesScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMlatentSpikes.c:$(n)" scaleFactor="0.1" weight="30.0"/>
 
-            <!-- Standard scale/bitflip operators on the parameters this template creates -->
+            <!-- Parameter operators -->
             <operator id="MTSMclockRateScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMclockRate.c:$(n)" scaleFactor="0.1" weight="5.0"/>
             <operator id="MTSMclockSDScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMclockSD.c:$(n)" scaleFactor="0.1" weight="5.0"/>
-            <operator id="MTSMspikeShapeScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMspikeShape.c:$(n)" scaleFactor="0.1" weight="10.0"/>
             <operator id="MTSMspikeMeanScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMspikeMean.c:$(n)" scaleFactor="0.1" weight="10.0"/>
             <operator id="MTSMspikeMeanPriorMeanScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMspikeMeanPriorMean.c:$(n)" scaleFactor="0.1" weight="5.0"/>
-            <operator id="MTSMlatentSpikesScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMlatentSpikes.c:$(n)" scaleFactor="0.1" weight="30.0"/>
+            <operator id="MTSMspikeShapeScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMspikeShape.c:$(n)" scaleFactor="0.1" weight="10.0"/>
             <operator id="MTSMBitFlipOperator.c:$(n)" spec="BitFlipOperator" uniform="true" parameter="@MTSMindicator.c:$(n)" weight="1.0"/>
 
-            <!-- ORCRatesScale only valid when nonCentered="false" (assumes a strictly-positive rate
-                 multiplier), so it's added via a gated <connect> below rather than nested here.
-                 ORCRatesRandomWalk has no such assumption and stays nested unconditionally. -->
+            <!-- Branch-rate operators; the scale operator is added below only when nonCentered="false" -->
             <operator id="MTSMAdaptableOperatorSamplerRatesInternal.c:$(n)" spec="AdaptableOperatorSampler" weight="20.0">
                 <parameter idref="MTSMbranchRates.c:$(n)"/>
                 <tree idref="Tree.t:$(n)"/>
@@ -148,7 +117,6 @@
                     <kernelDistribution spec="operator.kernel.KernelDistribution$Bactrian"/>
                 </operator>
             </operator>
-
             <operator id="MTSMORCRatesScale.c:tree.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMbranchRates.c:$(n)" scaleFactor="0.5" upper="10.0" weight="1.0">
                 <kernelDistribution spec="operator.kernel.KernelDistribution$Bactrian"/>
             </operator>
@@ -157,135 +125,91 @@
             <log id="MTSMrateStat.c:$(n)" spec="beast.base.evolution.RateStatistic" tree="@Tree.t:$(n)" branchratemodel="@MultiTypeSpikeClock.c:$(n)"/>
             <log id="MTSMSaltativeProportionLogger.c:$(n)" spec="multitypespike.logger.SaltativeProportionLogger" tree="@Tree.t:$(n)" clock="@MultiTypeSpikeClock.c:$(n)"/>
             <log id="MTSMSpikeLogger.c:$(n)" spec="multitypespike.logger.SpikeLogger" clock="@MultiTypeSpikeClock.c:$(n)"/>
-            <log id="MTSMHiddenEventsLogger.c:$(n)" spec="multitypespike.logger.HiddenEventsLogger" branchSpikePrior="@MTSMbranchSpikePrior.c:$(n)" indicator="@MTSMindicator.c:$(n)"/>
+            <log id="MTSMHiddenEventsLogger.c:$(n)" spec="multitypespike.logger.HiddenEventsLogger" branchSpikePrior="@MTSMbranchSpikePrior.c:$(n)"/>
 
             ]]>
 
-            <!-- state -->
-            <connect srcID='MTSMbranchRates.c:$(n)' targetID='state' inputName='stateNode'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MTSMbranchRates.c:$(n)) and MTSMbranchRates.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMlatentSpikes.c:$(n)' targetID='state' inputName='stateNode'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MTSMlatentSpikes.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMclockSD.c:$(n)' targetID='state' inputName='stateNode'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMclockSD.c:$(n)) and MTSMclockSD.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMspikeShape.c:$(n)' targetID='state' inputName='stateNode'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMspikeShape.c:$(n)) and MTSMspikeShape.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMspikeMean.c:$(n)' targetID='state' inputName='stateNode'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMspikeMean.c:$(n)) and MTSMspikeMean.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMclockRate.c:$(n)' targetID='state' inputName='stateNode'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MTSMclockRate.c:$(n)) and MTSMclockRate.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMindicator.c:$(n)' targetID='state' inputName='stateNode'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MTSMindicator.c:$(n)) and MTSMindicator.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMspikeMeanPriorMean.c:$(n)' targetID='state' inputName='stateNode'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMeanPriorMean.c:$(n)/estimate=true'/>
-
-            <!-- prior -->
-            <connect srcID='MTSMclockRatePrior.c:$(n)' targetID='prior' inputName='distribution'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MTSMclockRate.c:$(n)) and MTSMclockRate.c:$(n)/estimate=true'>
-                Multi-type spike relaxed clock mean of partition c:$(n)
-            </connect>
-            <connect srcID='MTSMclockSDPrior.c:$(n)' targetID='prior' inputName='distribution'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMclockSD.c:$(n)/estimate=true'>
-                Multi-type spike relaxed clock stdev of partition c:$(n)
-            </connect>
-            <connect srcID='MTSMbranchRatePriorCentered.c:$(n)' targetID='prior' inputName='distribution'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MTSMbranchRates.c:$(n)) and MultiTypeSpikeClock.c:$(n)/nonCentered=false'>
-                Multi-type spike relaxed clock branch rates of partition c:$(n) (centered).
-            </connect>
-            <connect srcID='MTSMbranchRatePriorNonCentered.c:$(n)' targetID='prior' inputName='distribution'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MTSMbranchRates.c:$(n)) and MultiTypeSpikeClock.c:$(n)/nonCentered=true'>
-                Multi-type spike relaxed clock branch rates of partition c:$(n) (non-centered). Must stay
-                Normal(0,1) - do not change this distribution or its parameters.
-            </connect>
-            <connect srcID='MTSMspikeMeanPrior.c:$(n)' targetID='prior' inputName='distribution'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMean.c:$(n)/estimate=true'>
-                Multi-type spike relaxed clock spike mean of partition c:$(n).
-            </connect>
-            <connect srcID='MTSMspikeMeanPriorMeanPrior.c:$(n)' targetID='prior' inputName='distribution'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMeanPriorMean.c:$(n)/estimate=true'>
-                Hierarchical hyperprior on the mean of the spike mean of partition c:$(n)
-            </connect>
-            <connect srcID='MTSMspikeShapePrior.c:$(n)' targetID='prior' inputName='distribution'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeShape.c:$(n)/estimate=true'>
-                Multi-type spike relaxed clock spike shape of partition c:$(n).
-            </connect>
-            <connect srcID='MTSMbranchSpikePrior.c:$(n)' targetID='prior' inputName='distribution'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n))'>
-                Multi-type spike branch spike prior of partition c:$(n)
-            </connect>
-
-            <!-- tracelog -->
-            <connect srcID='MTSMindicator.c:$(n)' targetID='tracelog' inputName='log'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MTSMindicator.c:$(n))'/>
-            <connect srcID='MTSMclockRate.c:$(n)' targetID='tracelog' inputName='log'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MTSMclockRate.c:$(n)) and MTSMclockRate.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMclockSD.c:$(n)' targetID='tracelog' inputName='log'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMclockSD.c:$(n))'/>
-            <connect srcID='MTSMspikeShape.c:$(n)' targetID='tracelog' inputName='log'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMspikeShape.c:$(n))'/>
-            <connect srcID='MTSMspikeMean.c:$(n)' targetID='tracelog' inputName='log'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMspikeMean.c:$(n))'/>
-            <connect srcID='MTSMspikeMeanPriorMean.c:$(n)' targetID='tracelog' inputName='log'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMeanPriorMean.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMrateStat.c:$(n)' targetID='tracelog' inputName='log'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
-            <connect srcID='MTSMSaltativeProportionLogger.c:$(n)' targetID='tracelog' inputName='log'
+            <!-- Link to the BDMM-Prime tree prior (parameterization, start-type probabilities, sample offset) -->
+            <connect srcID='BDMMPrime.t:$(n)' targetID='MTSMbranchSpikePrior.c:$(n)' inputName='bdmDistr'
                      if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
 
-            <!-- tree metadata -->
-            <connect srcID='MultiTypeSpikeClock.c:$(n)' targetID='TreeWithMetaDataLogger.t:$(n)' inputName='branchratemodel'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MultiTypeSpikeClock.c:$(n))'/>
-            <connect srcID='MTSMbranchRates.c:$(n)' targetID='TreeWithMetaDataLogger.t:$(n)' inputName='metadata'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MultiTypeSpikeClock.c:$(n))'/>
-            <connect srcID='MTSMSpikeLogger.c:$(n)' targetID='TreeWithMetaDataLogger.t:$(n)' inputName='metadata'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MultiTypeSpikeClock.c:$(n))'/>
-            <connect srcID='MTSMHiddenEventsLogger.c:$(n)' targetID='TreeWithMetaDataLogger.t:$(n)' inputName='metadata'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MultiTypeSpikeClock.c:$(n))'/>
+            <!-- Tree (re-linked when trees are linked across partitions) -->
+            <connect srcID='Tree.t:$(n)' targetID='MultiTypeSpikeClock.c:$(n)' inputName='tree' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='Tree.t:$(n)' targetID='MTSMbranchSpikePrior.c:$(n)' inputName='tree' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='Tree.t:$(n)' targetID='MTSMTargetedSpikeOperator.c:$(n)' inputName='tree' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='Tree.t:$(n)' targetID='MTSMrateStat.c:$(n)' inputName='tree' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='Tree.t:$(n)' targetID='MTSMSaltativeProportionLogger.c:$(n)' inputName='tree' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
 
-            <!-- mcmc operators -->
-            <connect srcID='MTSMSpikeFlipOperator.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMlatentSpikes.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true'/>
-            <!-- SpikeUpRateDown assumes branchRates is a strictly-positive multiplier - only valid when
-                 nonCentered="false" -->
-            <connect srcID='MTSMSpikeUpRateDown.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MultiTypeSpikeClock.c:$(n)/nonCentered=false'>
-                Up/down rates and spikes of partition c:$(n)
+            <!-- State -->
+            <connect srcID='MTSMclockRate.c:$(n)' targetID='state' inputName='stateNode' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMclockRate.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMclockSD.c:$(n)' targetID='state' inputName='stateNode' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMclockSD.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMbranchRates.c:$(n)' targetID='state' inputName='stateNode' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMbranchRates.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMspikeMean.c:$(n)' targetID='state' inputName='stateNode' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMean.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMspikeMeanPriorMean.c:$(n)' targetID='state' inputName='stateNode' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMeanPriorMean.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMspikeShape.c:$(n)' targetID='state' inputName='stateNode' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeShape.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMlatentSpikes.c:$(n)' targetID='state' inputName='stateNode' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMindicator.c:$(n)' targetID='state' inputName='stateNode' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMindicator.c:$(n)/estimate=true'/>
+
+            <!-- Priors -->
+            <connect srcID='MTSMbranchSpikePrior.c:$(n)' targetID='prior' inputName='distribution' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'>
+                Spike prior of partition c:$(n)
             </connect>
-            <connect srcID='MTSMTargetedSpikeOperator.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMlatentSpikes.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMclockRateScale.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and inlikelihood(MTSMclockRate.c:$(n)) and MTSMclockRate.c:$(n)/estimate=true'>
+            <connect srcID='MTSMclockRatePrior.c:$(n)' targetID='prior' inputName='distribution' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMclockRate.c:$(n)/estimate=true'>
+                Mean clock rate of partition c:$(n)
+            </connect>
+            <connect srcID='MTSMclockSDPrior.c:$(n)' targetID='prior' inputName='distribution' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMclockSD.c:$(n)/estimate=true'>
+                Relaxed clock standard deviation of partition c:$(n)
+            </connect>
+            <connect srcID='MTSMbranchRatePriorCentered.c:$(n)' targetID='prior' inputName='distribution' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MultiTypeSpikeClock.c:$(n)/nonCentered=false'>
+                Branch rate multipliers of partition c:$(n)
+            </connect>
+            <connect srcID='MTSMbranchRatePriorNonCentered.c:$(n)' targetID='prior' inputName='distribution' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MultiTypeSpikeClock.c:$(n)/nonCentered=true'>
+                Non-centred branch rates of partition c:$(n); must remain Normal(0,1)
+            </connect>
+            <connect srcID='MTSMspikeMeanPrior.c:$(n)' targetID='prior' inputName='distribution' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMean.c:$(n)/estimate=true'>
+                Spike mean of partition c:$(n)
+            </connect>
+            <connect srcID='MTSMspikeMeanPriorMeanPrior.c:$(n)' targetID='prior' inputName='distribution' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMeanPriorMean.c:$(n)/estimate=true'>
+                Hyperprior on the prior mean of the spike mean of partition c:$(n)
+            </connect>
+            <connect srcID='MTSMspikeShapePrior.c:$(n)' targetID='prior' inputName='distribution' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeShape.c:$(n)/estimate=true'>
+                Spike shape of partition c:$(n)
+            </connect>
+
+            <!-- Operators -->
+            <connect srcID='MTSMSpikeFlipOperator.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMTargetedSpikeOperator.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMSpikeUpRateDown.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true and MultiTypeSpikeClock.c:$(n)/nonCentered=false'>
+                Scale branch rates up and spikes down on a branch of partition c:$(n)
+            </connect>
+            <connect srcID='MTSMlatentSpikesScale.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMclockRateScale.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMclockRate.c:$(n)/estimate=true'>
                 Scale mean clock rate of partition c:$(n)
             </connect>
-            <connect srcID='MTSMclockSDScale.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMclockSD.c:$(n))'/>
-            <connect srcID='MTSMspikeShapeScale.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMspikeShape.c:$(n))'/>
-            <connect srcID='MTSMspikeMeanScale.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMspikeMean.c:$(n))'/>
-            <connect srcID='MTSMspikeMeanPriorMeanScale.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMeanPriorMean.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMlatentSpikesScale.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMlatentSpikes.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMBitFlipOperator.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMindicator.c:$(n)/estimate=true'/>
-            <connect srcID='MTSMAdaptableOperatorSamplerRatesInternal.c:$(n)' targetID='mcmc' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
-            <!-- Only added when nonCentered="false" -->
+            <connect srcID='MTSMclockSDScale.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMclockSD.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMspikeMeanScale.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMean.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMspikeMeanPriorMeanScale.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMeanPriorMean.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMspikeShapeScale.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeShape.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMBitFlipOperator.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMindicator.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMAdaptableOperatorSamplerRatesInternal.c:$(n)' targetID='mcmc' inputName='operator' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMbranchRates.c:$(n)/estimate=true'/>
             <connect srcID='MTSMORCRatesScale.c:tree.c:$(n)' targetID='MTSMAdaptableOperatorSamplerRatesInternal.c:$(n)' inputName='operator'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n)) and MultiTypeSpikeClock.c:$(n)/nonCentered=false'/>
+                     if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMbranchRates.c:$(n)/estimate=true and MultiTypeSpikeClock.c:$(n)/nonCentered=false'/>
 
-            <!-- tree wiring -->
-            <connect srcID='Tree.t:$(n)' targetID='MultiTypeSpikeClock.c:$(n)' inputName='tree'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
-            <connect srcID='Tree.t:$(n)' targetID='MTSMrateStat.c:$(n)' inputName='tree'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
-            <connect srcID='Tree.t:$(n)' targetID='MTSMSaltativeProportionLogger.c:$(n)' inputName='tree'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
-            <connect srcID='Tree.t:$(n)' targetID='MTSMTargetedSpikeOperator.c:$(n)' inputName='tree'
-                     if='inposterior(BDMMPrime.t:$(n)) and inposterior(MTSMlatentSpikes.c:$(n)) and MTSMlatentSpikes.c:$(n)/estimate=true'/>
-            <connect srcID='Tree.t:$(n)' targetID='MTSMbranchSpikePrior.c:$(n)' inputName='tree'
-                     if='inposterior(BDMMPrime.t:$(n)) and inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <!-- Trace log -->
+            <connect srcID='MTSMclockRate.c:$(n)' targetID='tracelog' inputName='log' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMclockRate.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMclockSD.c:$(n)' targetID='tracelog' inputName='log' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMclockSD.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMspikeMean.c:$(n)' targetID='tracelog' inputName='log' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='MTSMspikeMeanPriorMean.c:$(n)' targetID='tracelog' inputName='log' if='inlikelihood(MultiTypeSpikeClock.c:$(n)) and MTSMspikeMeanPriorMean.c:$(n)/estimate=true'/>
+            <connect srcID='MTSMspikeShape.c:$(n)' targetID='tracelog' inputName='log' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='MTSMindicator.c:$(n)' targetID='tracelog' inputName='log' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='MTSMrateStat.c:$(n)' targetID='tracelog' inputName='log' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='MTSMSaltativeProportionLogger.c:$(n)' targetID='tracelog' inputName='log' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+
+            <!-- Tree log -->
+            <connect srcID='MultiTypeSpikeClock.c:$(n)' targetID='TreeWithMetaDataLogger.t:$(n)' inputName='branchratemodel' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='MTSMbranchRates.c:$(n)' targetID='TreeWithMetaDataLogger.t:$(n)' inputName='metadata' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='MTSMSpikeLogger.c:$(n)' targetID='TreeWithMetaDataLogger.t:$(n)' inputName='metadata' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
+            <connect srcID='MTSMHiddenEventsLogger.c:$(n)' targetID='TreeWithMetaDataLogger.t:$(n)' inputName='metadata' if='inlikelihood(MultiTypeSpikeClock.c:$(n))'/>
 
         </subtemplate>
     </mergewith>

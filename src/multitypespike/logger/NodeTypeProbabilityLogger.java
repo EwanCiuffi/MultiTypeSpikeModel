@@ -50,9 +50,9 @@ public class NodeTypeProbabilityLogger extends CalculationNode implements Functi
 
             // Find the maximum for this node
             int maxType = 0;
-            double maxProb = branchSpikePriorInput.get().getPiVals(nodeNr, 0);
+            double maxProb = branchSpikePriorInput.get().getNodeTypeProbability(nodeNr, 0);
             for (int t = 1; t < nTypes; t++) {
-                double prob = branchSpikePriorInput.get().getPiVals(nodeNr, t);
+                double prob = branchSpikePriorInput.get().getNodeTypeProbability(nodeNr, t);
                 if (prob > maxProb) {
                     maxProb = prob;
                     maxType = t;
@@ -63,7 +63,7 @@ public class NodeTypeProbabilityLogger extends CalculationNode implements Functi
         } else {
             int nodeNr = dim / nTypes;
             int type = dim % nTypes;
-            return branchSpikePriorInput.get().getPiVals(nodeNr, type);
+            return branchSpikePriorInput.get().getNodeTypeProbability(nodeNr, type);
         }
     }
 

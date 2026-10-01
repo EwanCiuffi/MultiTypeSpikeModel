@@ -1,8 +1,8 @@
-<!-- Build MultiTypeSpike. Assumes beast2, BeastFX, BEASTLabs,
-     sampled-ancestors and BDMM-Prime are built sibling checkouts. -->
-<project basedir="." default="build_jar_all_mtsm" name="BUILD_MultiTypeSpike">
+<!-- Build MultiTypeSpikeModel. Assumes beast2, BeastFX and BDMM-Prime are sibling checkouts,
+     with BDMM-Prime already built; SA and BEASTLabs are downloaded into deps/. -->
+<project basedir="." default="build_jar_all_mtsm" name="BUILD_MultiTypeSpikeModel">
 	<description>
-	    Build MultiTypeSpike.
+	    Build MultiTypeSpikeModel.
 	    JUnit tests are available for this build.
 	</description>
 
@@ -168,11 +168,11 @@
 		<echo message="Successfully compiled." />
 	</target>
 
-	<!-- make the MultiTypeSpike package jars -->
-	<target name="dist_all_mtsm" depends="compile-allmtsm" description="create MultiTypeSpike jars">
+	<!-- make the MultiTypeSpikeModel package jars -->
+	<target name="dist_all_mtsm" depends="compile-allmtsm" description="create MultiTypeSpikeModel jars">
 		<mkdir dir="${distmtsm}" />
 
-		<jar jarfile="${distmtsm}/MultiTypeSpike.package.jar">
+		<jar jarfile="${distmtsm}/MultiTypeSpikeModel.package.jar">
 			<manifest>
 				<attribute name="Built-By" value="${user.name}" />
 			</manifest>
@@ -182,7 +182,7 @@
 			</fileset>
 		</jar>
 
-		<jar jarfile="${distmtsm}/MultiTypeSpike.src.jar">
+		<jar jarfile="${distmtsm}/MultiTypeSpikeModel.src.jar">
 			<fileset dir="${srcmtsm}">
 				<include name="**/*.java" />
 			</fileset>
@@ -206,7 +206,7 @@
 				</fileset>
 			</batchtest>
 		</junit>
-		<fail if="testFailedmtsm" message="One or more MultiTypeSpike unit tests failed. See ${report} for details." />
+		<fail if="testFailedmtsm" message="One or more MultiTypeSpikeModel unit tests failed. See ${report} for details." />
 		<echo message="JUnit tests finished." />
 	</target>
 
@@ -222,7 +222,7 @@
 	<!-- Assemble the installable BEAST 2 add-on zip -->
 	<target name="package"
 	        depends="build_jar_all_mtsm_NoJUnitTest"
-	        description="release BEAST 2 package version of MultiTypeSpike">
+	        description="release BEAST 2 package version of MultiTypeSpikeModel">
 
 		<delete dir="${Add_on_dir}" />
 		<mkdir dir="${Add_on_dir}" />
@@ -246,18 +246,18 @@
 			<fileset dir="${docmtsm}" includes="**/*" erroronmissingdir="false" />
 		</copy>
 		<copy todir="${Add_on_dir}/lib">
-			<fileset dir="${distmtsm}" includes="MultiTypeSpike.package.jar" />
+			<fileset dir="${distmtsm}" includes="MultiTypeSpikeModel.package.jar" />
 		</copy>
 		<copy todir="${Add_on_dir}">
-			<fileset dir="${distmtsm}" includes="MultiTypeSpike.src.jar" />
+			<fileset dir="${distmtsm}" includes="MultiTypeSpikeModel.src.jar" />
 		</copy>
 
-		<zip destfile="${distmtsm}/MultiTypeSpike.package.v${mtsmversion}.zip">
+		<zip destfile="${distmtsm}/MultiTypeSpikeModel.package.v${mtsmversion}.zip">
 			<fileset dir="${Add_on_dir}">
 				<include name="**/*" />
 			</fileset>
 		</zip>
-		<echo message="Package v${mtsmversion} release built at ${distmtsm}/MultiTypeSpike.package.v${mtsmversion}.zip" />
+		<echo message="Package v${mtsmversion} release built at ${distmtsm}/MultiTypeSpikeModel.package.v${mtsmversion}.zip" />
 	</target>
 
 
@@ -268,17 +268,29 @@
 
 	<target name="installLinux" depends="package" if="isLinux">
 		<mkdir dir="${user.home}/.beast/2.7/${projName}" />
-		<unzip src="${distmtsm}/MultiTypeSpike.package.v${mtsmversion}.zip" dest="${user.home}/.beast/2.7/${projName}" />
+		<unzip src="${distmtsm}/MultiTypeSpikeModel.package.v${mtsmversion}.zip" dest="${user.home}/.beast/2.7/${projName}" />
+		<!-- BEAUti caches the package class path; clear it so the new package and its templates are found -->
+		<replaceregexp match="^package\.path=.*$" replace="" byline="true">
+			<fileset dir="${user.home}/.beast/2.7" includes="beauti.properties" erroronmissingdir="false" />
+		</replaceregexp>
 	</target>
 
 	<target name="installMac" depends="package" if="isMac">
 		<mkdir dir="${user.home}/Library/Application Support/BEAST/2.7/${projName}" />
-		<unzip src="${distmtsm}/MultiTypeSpike.package.v${mtsmversion}.zip" dest="${user.home}/Library/Application Support/BEAST/2.7/${projName}" />
+		<unzip src="${distmtsm}/MultiTypeSpikeModel.package.v${mtsmversion}.zip" dest="${user.home}/Library/Application Support/BEAST/2.7/${projName}" />
+		<!-- BEAUti caches the package class path; clear it so the new package and its templates are found -->
+		<replaceregexp match="^package\.path=.*$" replace="" byline="true">
+			<fileset dir="${user.home}/Library/Application Support/BEAST/2.7" includes="beauti.properties" erroronmissingdir="false" />
+		</replaceregexp>
 	</target>
 
 	<target name="installWindows" depends="package" if="isWindows">
 		<mkdir dir="${user.home}/BEAST/2.7/${projName}" />
-		<unzip src="${distmtsm}/MultiTypeSpike.package.v${mtsmversion}.zip" dest="${user.home}/BEAST/2.7/${projName}" />
+		<unzip src="${distmtsm}/MultiTypeSpikeModel.package.v${mtsmversion}.zip" dest="${user.home}/BEAST/2.7/${projName}" />
+		<!-- BEAUti caches the package class path; clear it so the new package and its templates are found -->
+		<replaceregexp match="^package\.path=.*$" replace="" byline="true">
+			<fileset dir="${user.home}/BEAST/2.7" includes="beauti.properties" erroronmissingdir="false" />
+		</replaceregexp>
 	</target>
 
 	<target name="install" depends="installWindows,installMac,installLinux"

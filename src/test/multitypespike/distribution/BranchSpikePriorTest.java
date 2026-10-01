@@ -8,7 +8,9 @@ import beast.base.evolution.tree.*;
 import beast.base.evolution.tree.coalescent.ConstantPopulation;
 import beast.base.evolution.tree.coalescent.RandomTree;
 import beast.base.inference.parameter.RealParameter;
+import beast.base.util.Randomizer;
 import multitypespike.distribution.BranchSpikePrior;
+import multitypespike.logger.HiddenEventsLogger;
 import org.apache.commons.math.distribution.GammaDistributionImpl;
 import org.junit.Test;
 
@@ -571,5 +573,64 @@ public class BranchSpikePriorTest {
         assertEquals(logPOriginal, logPReused, 1e-16);
     }
 
-}
+    private static double bruteForceLogProb(double spike, double mu, double shape, int nObs) {
+        double sum = 0.0;
+        for (int k = 0; k < 2000; k++) {
+            int n = k + nObs;
+            double logPk = -mu + k * Math.log(mu) - org.apache.commons.math3.special.Gamma.logGamma(k + 1);
+            double logDensity = spike == 0.0 ? (n == 0 ? 0.0 : Double.NEGATIVE_INFINITY)
+                    : (n == 0 ? Double.NEGATIVE_INFINITY : BranchSpikePrior.logSpikeDensity(spike, n, shape));
+            sum += Math.exp(logPk + logDensity);
+        }
+        return Math.log(sum);
+    }
 
+    // Sum over hidden events must match brute force, including large spikes on branches with few expected events
+    @Test
+    public void branchSpikeLogProbsTest() {
+        double[][] cases = {{1.0, 0.05, 7.4}, {3.0, 0.05, 7.4}, {5.0, 0.3, 7.4}, {5.0, 1.0, 7.4},
+                {0.2, 20.0, 2.0}, {40.0, 3.0, 1.5}, {0.0, 0.7, 5.0}};
+        double[] logProbs = new double[2];
+        for (double[] c : cases) {
+            BranchSpikePrior.branchSpikeLogProbs(c[0], c[1], c[2], logProbs);
+            assertEquals(bruteForceLogProb(c[0], c[1], c[2], 0), logProbs[0], 1e-9);
+            assertEquals(bruteForceLogProb(c[0], c[1], c[2], 1), logProbs[1], 1e-9);
+        }
+
+        // No hidden events expected
+        BranchSpikePrior.branchSpikeLogProbs(2.0, 0.0, 3.0, logProbs);
+        assertEquals(Double.NEGATIVE_INFINITY, logProbs[0]);
+        assertEquals(BranchSpikePrior.logSpikeDensity(2.0, 1, 3.0), logProbs[1], 1e-12);
+        BranchSpikePrior.branchSpikeLogProbs(0.0, 0.0, 3.0, logProbs);
+        assertEquals(0.0, logProbs[0], 1e-12);
+        assertEquals(Double.NEGATIVE_INFINITY, logProbs[1]);
+    }
+
+    // Sampled hidden events must follow their conditional distribution given the spike
+    @Test
+    public void hiddenEventSamplerTest() {
+        Randomizer.setSeed(7);
+        double spike = 3.0, mu = 0.8, shape = 4.0;
+        double[] logProbs = new double[2];
+        BranchSpikePrior.branchSpikeLogProbs(spike, mu, shape, logProbs);
+
+        for (int nObs = 0; nObs <= 1; nObs++) {
+            double exactMean = 0.0;
+            double logTotal = logProbs[nObs];
+            for (int k = 0; k < 200; k++) {
+                double logPk = -mu + k * Math.log(mu) - org.apache.commons.math3.special.Gamma.logGamma(k + 1);
+                if (k + nObs > 0)
+                    exactMean += k * Math.exp(logPk + BranchSpikePrior.logSpikeDensity(spike, k + nObs, shape) - logTotal);
+            }
+
+            int n = 200000;
+            double sampleMean = 0.0;
+            for (int i = 0; i < n; i++)
+                sampleMean += HiddenEventsLogger.sampleHiddenEventCount(spike, mu, shape, nObs, logTotal);
+            sampleMean /= n;
+
+            assertEquals("Hidden event sampler mean (nObs = " + nObs + ")", exactMean, sampleMean, 0.01);
+        }
+    }
+
+}

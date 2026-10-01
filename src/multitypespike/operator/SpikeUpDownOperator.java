@@ -14,8 +14,7 @@ public class SpikeUpDownOperator extends BactrianScaleOperator {
     final public Input<RealParameter> spikesInput = new Input<>("spikes",
             "spikes associated with each branch", Input.Validate.REQUIRED);
     final public Input<Parameterization> parameterizationInput = new Input<>("parameterization",
-            "BDMM-prime parameterization object (see BDMM-prime package for available parameterizations)",
-            Input.Validate.REQUIRED);
+            "BDMM-Prime parameterization, giving the number of types (default: spikes dimension / rates dimension).");
     final public Input<Boolean> reverseInput = new Input<>("reverseDirection",
             "If true, moves spikes up and corresponding rates down", false);
 
@@ -26,11 +25,14 @@ public class SpikeUpDownOperator extends BactrianScaleOperator {
     public void initAndValidate() {
         super.initAndValidate();
         reverse = reverseInput.get();
-        nTypes = parameterizationInput.get().getNTypes();
+    }
 
-        // Validate index layout: spikes.dimension must equal rates.dimension * nTypes
-        // so that spike index = rateIndex * nTypes + typeIndex is well-defined.
+    // Resolved on first use, once the clock model and spike prior have set the dimensions.
+    // Spikes are laid out as rateIndex * nTypes + typeIndex.
+    private void resolveTypes() {
         final RealParameter rates = parameterInput.get();
+        nTypes = parameterizationInput.get() != null ? parameterizationInput.get().getNTypes()
+                : spikesInput.get().getDimension() / rates.getDimension();
         final RealParameter spikes = spikesInput.get();
         if (spikes.getDimension() != rates.getDimension() * nTypes) {
             throw new IllegalArgumentException(
@@ -42,6 +44,7 @@ public class SpikeUpDownOperator extends BactrianScaleOperator {
 
     @Override
     public double proposal() {
+        if (nTypes == 0) resolveTypes();
 
         final RealParameter rates = parameterInput.get();
         final RealParameter spikes = spikesInput.get();

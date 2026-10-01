@@ -9,13 +9,9 @@ import beast.base.inference.CalculationNode;
 import beast.base.inference.parameter.BooleanParameter;
 import beast.base.util.Randomizer;
 import multitypespike.distribution.BranchSpikePrior;
-import org.apache.commons.math.distribution.GammaDistribution;
-import org.apache.commons.math.distribution.GammaDistributionImpl;
-import org.apache.commons.math.special.Gamma;
 
 import java.io.PrintStream;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 
 
 @Description("Logs the number of hidden speciation events per branch: either a stochastic sample " +
@@ -23,7 +19,6 @@ import java.util.List;
 public class HiddenEventsLogger extends CalculationNode implements Function, Loggable {
     final public Input<BranchSpikePrior> branchSpikePriorInput =
             new Input<>("branchSpikePrior", "Branch spike prior", Input.Validate.REQUIRED);
-    final public Input<BooleanParameter> indicatorInput = new Input<>("indicator", "if false then no spikes are inferred", Input.Validate.OPTIONAL);
     final public Input<Boolean> logPerTypeInput = new Input<>(
             "logPerType","If true, log hidden events of each type separately for multi-type models; " +
                     "if false, log totals per node (sum across types).",false); // default: sum across types
@@ -36,6 +31,11 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
     protected int nTypes, nodeCount;
     protected boolean logPerType;
     protected boolean logExpectedValue;
+
+    // Hidden events sampled for the current log line, per node and type; a new joint sample is
+    // drawn once every dimension has been read (log line or tree metadata)
+    private double[] sampledEvents;
+    private boolean[] dimRead;
 
     @Override
     public void initAndValidate() {
@@ -50,6 +50,7 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
 
     @Override
     public void log(long sample, PrintStream out) {
+        if (!logExpectedValue) sampleHiddenEvents();
         for (int i = 0; i < this.getDimension(); i ++) {
             out.print(this.getArrayValue(i) + "\t");
         }
@@ -76,21 +77,104 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
             }
         }
 
-        if(nTypes == 1) {
-            return sampleHiddenEvent(dim);
-        } else if(!logPerType){
-            // Sum across all types for each node
-            double sum = 0.0;
-            for (int type = 0; type < nTypes; type++) {
-                sum += sampleHiddenEvent(dim, type);
+        if (sampledEvents == null || dimRead[dim]) sampleHiddenEvents();
+        dimRead[dim] = true;
+        if (nTypes == 1 || logPerType) return sampledEvents[dim];
+
+        // Sum across all types for each node
+        double sum = 0.0;
+        for (int type = 0; type < nTypes; type++) {
+            sum += sampledEvents[dim * nTypes + type];
+        }
+        return sum;
+    }
+
+    /**
+     * Samples the hidden events on every branch from their conditional distribution given the spikes:
+     * first the type of the observed speciation event, then the hidden events of each type.
+     */
+    private void sampleHiddenEvents() {
+        if (sampledEvents == null) {
+            sampledEvents = new double[nodeCount * nTypes];
+            dimRead = new boolean[getDimension()];
+        }
+        Arrays.fill(dimRead, false);
+
+        double[] logP0 = new double[nTypes];
+        double[] logP1 = new double[nTypes];
+        double[] logProbs = new double[2];
+        double[] logWeights = new double[nTypes];
+
+        for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
+            Node node = bsp.treeInput.get().getNode(nodeNr);
+            if (node.isRoot() || node.isDirectAncestor()) {
+                for (int type = 0; type < nTypes; type++) sampledEvents[nodeNr * nTypes + type] = 0;
+                continue;
             }
-            return sum;
+
+            for (int type = 0; type < nTypes; type++) {
+                BranchSpikePrior.branchSpikeLogProbs(getSpike(nodeNr, type),
+                        bsp.getExpectedHiddenEvents(nodeNr, type), bsp.getSpikeShape(type), logProbs);
+                logP0[type] = logProbs[0];
+                logP1[type] = logProbs[1];
+            }
+
+            int obsType = -1;
+            if (!node.getParent().isFake()) {
+                double maxLogWeight = Double.NEGATIVE_INFINITY;
+                for (int i = 0; i < nTypes; i++) {
+                    double pi = nTypes == 1 ? 1.0 : bsp.getPiVals(nodeNr, i);
+                    logWeights[i] = pi > 0 ? Math.log(pi) + logP1[i] : Double.NEGATIVE_INFINITY;
+                    for (int j = 0; j < nTypes; j++) {
+                        if (j != i) logWeights[i] += logP0[j];
+                    }
+                    maxLogWeight = Math.max(maxLogWeight, logWeights[i]);
+                }
+                double[] weights = new double[nTypes];
+                for (int i = 0; i < nTypes; i++) weights[i] = Math.exp(logWeights[i] - maxLogWeight);
+                obsType = Randomizer.randomChoicePDF(weights);
+            }
+
+            for (int type = 0; type < nTypes; type++) {
+                int nObs = type == obsType ? 1 : 0;
+                sampledEvents[nodeNr * nTypes + type] = sampleHiddenEventCount(getSpike(nodeNr, type),
+                        bsp.getExpectedHiddenEvents(nodeNr, type), bsp.getSpikeShape(type), nObs,
+                        nObs == 1 ? logP1[type] : logP0[type]);
+            }
         }
-        else {
-            int type = dim % nTypes;
-            int nodeNr = dim / nTypes;
-                return sampleHiddenEvent(nodeNr, type);
+    }
+
+    private double getSpike(int nodeNr, int type) {
+        return bsp.spikesInput.get().getValue(nodeNr * nTypes + type);
+    }
+
+    /**
+     * Inverse-CDF draw of the number of hidden events k given the spike, where the spike is made up of
+     * k + nObs increments; logTotal is the normalising constant from BranchSpikePrior.branchSpikeLogProbs.
+     */
+    public static int sampleHiddenEventCount(double spike, double expNrHiddenEvents, double spikeShape,
+                                              int nObs, double logTotal) {
+        if (!(expNrHiddenEvents > 0.0) || logTotal == Double.NEGATIVE_INFINITY) return 0;
+
+        double logU = Math.log(Randomizer.nextDouble()) + logTotal;
+        double logMu = Math.log(expNrHiddenEvents);
+        double logPk = -expNrHiddenEvents;
+        double logCumSum = Double.NEGATIVE_INFINITY;
+
+        int k = 0;
+        for (; k < 100000; k++) {
+            int nIncrements = k + nObs;
+            double logDensity;
+            if (spike == 0.0) logDensity = nIncrements == 0 ? 0.0 : Double.NEGATIVE_INFINITY;
+            else logDensity = nIncrements == 0 ? Double.NEGATIVE_INFINITY
+                    : BranchSpikePrior.logSpikeDensity(spike, nIncrements, spikeShape);
+
+            logCumSum = BranchSpikePrior.logAdd(logCumSum, logPk + logDensity);
+            if (logCumSum >= logU) break;
+
+            logPk += logMu - Math.log(k + 1);
         }
+        return k;
     }
 
     @Override
@@ -111,216 +195,7 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
         }
     }
 
-    private int sampleHiddenEvent(int nodeNr) {
-        Node node = bsp.treeInput.get().getNode(nodeNr);
-        if (node.isRoot() || node.isDirectAncestor()) {
-            return 0;
-        }
-        double[] cf = getCumulativeProbs(nodeNr);
-
-        return Randomizer.randomChoice(cf);
-    }
-
-    private int sampleHiddenEvent(int nodeNr, int type) {
-        Node node = bsp.treeInput.get().getNode(nodeNr);
-        if (node.isRoot() || node.isDirectAncestor()) {
-            return 0;
-        }
-        double[] cf = getCumulativeProbs(nodeNr, type);
-
-        return Randomizer.randomChoice(cf);
-    }
-
-
-    final double MAX_CUM_SUM = 0.999;
-
-    /**
-     * Calculate cumulative probabilities of sampling hidden events, conditional on the gamma distribution and tree prior (theta)
-     * p(hiddenEvents | spike size, theta) = p(spike size | hiddenEvents, theta) x p (hiddenEvents | theta) / p (spike size | theta)
-     */
-
-    // Single-type version
-    public double[] getCumulativeProbs(int nodeNr) {
-
-        Node node = bsp.treeInput.get().getNode(nodeNr);
-
-        if (node.isRoot() || node.isDirectAncestor()) {
-            return new double[0];
-        }
-
-        List<Double> probs = new ArrayList<>();
-
-        // Check spikeShape is positive
-        double spikeShape = bsp.spikeShapeInput.get().getValue();
-        if (spikeShape <= 0) {
-            throw new IllegalArgumentException("Cannot sample spikes because spikeShape is non-positive " + spikeShape);
-        }
-
-        // Spike size
-        double branchSpike = bsp.spikesInput.get().getValue(nodeNr);
-
-        double expNrHiddenEvents = bsp.getExpectedHiddenEvents(nodeNr);
-
-        int k = 0;
-        double poissonCumSum = 0;
-
-        double branchPSum = 0;
-        while (poissonCumSum < MAX_CUM_SUM) {
-
-            double branchP = 0;
-
-            // Probability of k hidden events P(k) under a Poisson(mu)
-            double logpk = -expNrHiddenEvents + k*Math.log(expNrHiddenEvents) - Gamma.logGamma(k+1);
-            double pk = Math.exp(logpk);
-
-            if (indicatorInput.get() != null && indicatorInput.get().getValue()) {
-
-            // Integrate across all possible values in poisson distribution
-            int nSpikes = node.getParent().isFake() ? k : k + 1;
-
-                if (nSpikes == 0) {
-                    // Valid zero spike
-                    if (branchSpike == 0) branchP += Math.exp(logpk);
-
-                } else {
-                    // Compute log-probability of observed spike under Gamma distribution
-                    GammaDistribution gamma = new GammaDistributionImpl(
-                            spikeShape * nSpikes, 1 / spikeShape);
-                    double gammaLogP = gamma.logDensity(branchSpike);
-                    if (branchSpike != 0 && Double.isFinite(gammaLogP)) {
-
-                        branchP += Math.exp(logpk + gammaLogP);
-                    }
-                }
-            } else {
-                branchP += pk;
-            }
-
-            poissonCumSum += pk;
-            branchPSum += branchP;
-            probs.add(branchP);
-
-            k++;
-        }
-
-
-        // Normalise to sum to 1
-        double[] array = new double[probs.size()];
-        for(int i = 0; i < probs.size(); i++) {
-            array[i] = probs.get(i) / branchPSum;
-        }
-
-
-        // Convert into cumulative sum
-        double cumsum = 0;
-        for(int i = 0; i < probs.size(); i++) {
-            double p = array[i];
-            array[i] = p + cumsum;
-            cumsum += p;
-        }
-
-        return array;
-
-    }
-
-    // Multi-type version
-    public double[] getCumulativeProbs(int nodeNr, int type) {
-
-        Node node = bsp.treeInput.get().getNode(nodeNr);
-
-        if (node.isRoot() || node.isDirectAncestor()) {
-            return new double[0];
-        }
-
-        List<Double> probs = new ArrayList<>();
-
-        double spikeShape;
-        if (bsp.spikeShapeInput.get().getDimension() == 1) spikeShape = bsp.spikeShapeInput.get().getValue();
-         else spikeShape = bsp.spikeShapeInput.get().getValue(type);
-
-        // Check spikeShape is positive
-        if (spikeShape <= 0) {
-            throw new IllegalArgumentException("Cannot sample spikes because spikeShape is non-positive " + spikeShape);
-        }
-
-        // Spike size
-        double branchSpike = bsp.spikesInput.get().getValue(nodeNr * nTypes + type);
-
-        double expNrHiddenEvents = bsp.getExpectedHiddenEvents(nodeNr, type);
-
-        double pi = bsp.getPiVals(nodeNr, type);
-
-        int k = 0;
-        double poissonCumSum = 0;
-
-        double branchPSum = 0;
-        while (poissonCumSum < MAX_CUM_SUM) {
-
-            double branchP = 0;
-
-            // Probability of k hidden events P(k) under a Poisson(mu)
-            double logpk = -expNrHiddenEvents + k*Math.log(expNrHiddenEvents) - Gamma.logGamma(k+1);
-            double pk = Math.exp(logpk);
-
-            if (indicatorInput.get() != null && indicatorInput.get().getValue()) {
-
-                // Integrate over type of the observed speciation event
-                for (int obsEvent = 0; obsEvent <= 1; obsEvent++) {
-                    double pObs = obsEvent == 1 ? pi : (1 - pi);
-
-                    // Integrate across all possible values in poisson distribution
-                    int nSpikes = node.getParent().isFake() ? k : k + 1;
-
-                    if (nSpikes == 0) {
-
-                        // Valid zero spike
-                        if (branchSpike == 0) branchP += Math.exp(logpk + Math.log(pObs));
-
-                    } else {
-                        // Compute log-probability of observed spike under Gamma distribution
-                        GammaDistribution gamma = new GammaDistributionImpl(
-                                spikeShape * nSpikes, 1 / spikeShape);
-                        double gammaLogP = gamma.logDensity(branchSpike);
-
-                        if (branchSpike != 0 && Double.isFinite(gammaLogP)) {
-                            branchP += Math.exp(logpk + gammaLogP + Math.log(pObs));
-                        }
-                    }
-                }
-
-            } else {
-                branchP += pk;
-            }
-
-            poissonCumSum += pk;
-            branchPSum += branchP;
-            probs.add(branchP);
-
-            k++;
-
-        }
-
-
-        // Normalise to sum to 1
-        double[] array = new double[probs.size()];
-        for(int i = 0; i < probs.size(); i++) {
-            array[i] = probs.get(i) / branchPSum;
-        }
-
-
-        // Convert into cumulative sum
-        double cumsum = 0;
-        for(int i = 0; i < probs.size(); i++) {
-            double p = array[i];
-            array[i] = p + cumsum;
-            cumsum += p;
-        }
-
-        return array;
-
-    }
-
-        @Override
+    @Override
     public void close(PrintStream out) {
     }
 
