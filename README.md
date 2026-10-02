@@ -1,4 +1,4 @@
-# Multi-type Spike Model
+# Multi-Type Spike Model
 
 **MultiTypeSpikeModel** is a BEAST 2 package for modelling **punctuated evolution**: bursts of change
 ("spikes") at branching events, alongside gradual change along branches under a relaxed clock. It
