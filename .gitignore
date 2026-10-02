@@ -30,3 +30,6 @@
 *.trees
 *.xml.state
 beast_services.xml
+
+# Maven
+/target/
