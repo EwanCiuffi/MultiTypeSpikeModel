@@ -3,18 +3,21 @@ package test.multitypespike.distribution;
 import bdmmprime.distribution.BirthDeathMigrationDistribution;
 import bdmmprime.parameterization.*;
 import beast.base.evolution.tree.*;
-import beast.base.inference.parameter.RealParameter;
+import beast.base.spec.domain.NonNegativeReal;
+import beast.base.spec.inference.parameter.RealScalarParam;
+import beast.base.spec.inference.parameter.SimplexParam;
+import test.multitypespike.Params;
 import multitypespike.distribution.BranchSpikePrior;
 import multitypespike.distribution.MultiTypeHiddenEventsIntegrator;
 import org.apache.commons.math3.ode.ContinuousOutputModel;
 import bdmmprime.mapping.TypeMappedTree;
 import beast.base.util.Randomizer;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 
-import static junit.framework.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MultiTypeHiddenEventsTest {
 
@@ -24,8 +27,8 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "t1[&state=0]:1.0;";
         Tree tree = new TreeParser(newick, false,false,true,0);
-        RealParameter origin = new RealParameter("1.0");
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("1.0");
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
@@ -33,25 +36,24 @@ public class MultiTypeHiddenEventsTest {
                 "processLength", origin,
                 "birthRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("3.0 3.0"), 2),
+                        Params.real("3.0 3.0"), 2),
                 "deathRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.5 0.5"), 2),
+                        Params.real("0.5 0.5"), 2),
                 "birthRateAmongDemes", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("1.5 0.0"), 2),
+                        Params.real("1.5 0.0"), 2),
                 "migrationRate", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.0 0.0"), 2),
+                        Params.real("0.0 0.0"), 2),
                 "samplingRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
+                        Params.real("0.0"), 2),
                 "removalProb", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
-                "rhoSampling", new TimedParameter(
-                        origin,
-                        new RealParameter("0.2 0.0"), 2));
+                        Params.real("0.0"), 2),
+                "rhoSampling", new TimedParameter(Params.asVector(origin),
+                        Params.real("0.2 0.0"), 2));
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
 
@@ -74,8 +76,8 @@ public class MultiTypeHiddenEventsTest {
         BranchSpikePrior bsp = new BranchSpikePrior();
         bsp.initByName("parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
@@ -90,7 +92,7 @@ public class MultiTypeHiddenEventsTest {
                         false, true, pool, weightOfNodeSubTree,0.1
                 );
 
-        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getDoubleValues(), parameterization,0.0, 1.0);
+        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getValues(), parameterization,0.0, 1.0);
 
         double[] hiddenEvents = multitypeHiddenEvents.getExpNrHiddenEventsForNode(nodeNr);
 
@@ -102,8 +104,8 @@ public class MultiTypeHiddenEventsTest {
         double sim_hiddenEvents_1 = 0.0;
         double tolerance = 1e-2;
 
-        assertEquals("Type 0 hidden events mismatch", sim_hiddenEvents_0, hiddenEvents[0], tolerance);
-        assertEquals("Type 1 hidden events mismatch", sim_hiddenEvents_1, hiddenEvents[1], tolerance);
+        assertEquals(sim_hiddenEvents_0, hiddenEvents[0], tolerance, "Type 0 hidden events mismatch");
+        assertEquals(sim_hiddenEvents_1, hiddenEvents[1], tolerance, "Type 1 hidden events mismatch");
     }
 
 
@@ -113,8 +115,8 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "t1[&state=0]:1.0;";
         Tree tree = new TreeParser(newick, false,false,true,0);
-        RealParameter origin = new RealParameter("1.0");
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("1.0");
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
@@ -122,25 +124,24 @@ public class MultiTypeHiddenEventsTest {
                 "processLength", origin,
                 "birthRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("3.0 3.0"), 2),
+                        Params.real("3.0 3.0"), 2),
                 "deathRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.5 0.5"), 2),
+                        Params.real("0.5 0.5"), 2),
                 "birthRateAmongDemes", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("1.5 1.0"), 2),
+                        Params.real("1.5 1.0"), 2),
                 "migrationRate", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.2 0.4"), 2),
+                        Params.real("0.2 0.4"), 2),
                 "samplingRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
+                        Params.real("0.0"), 2),
                 "removalProb", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
-                "rhoSampling", new TimedParameter(
-                        origin,
-                        new RealParameter("0.2 0.0"), 2));
+                        Params.real("0.0"), 2),
+                "rhoSampling", new TimedParameter(Params.asVector(origin),
+                        Params.real("0.2 0.0"), 2));
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
 
@@ -164,8 +165,8 @@ public class MultiTypeHiddenEventsTest {
         BranchSpikePrior bsp = new BranchSpikePrior();
         bsp.initByName("parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
@@ -179,7 +180,7 @@ public class MultiTypeHiddenEventsTest {
                         false, true, pool, weightOfNodeSubTree, 0.1
                 );
 
-        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getDoubleValues(), parameterization,0.0, 1.0);
+        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getValues(), parameterization,0.0, 1.0);
 
         double[] hiddenEvents = multitypeHiddenEvents.getExpNrHiddenEventsForNode(nodeNr);
 
@@ -191,8 +192,8 @@ public class MultiTypeHiddenEventsTest {
         double sim_hiddenEvents_1 = 1.4639;
         double tolerance = 1e-2;
 
-        assertEquals("Type 0 hidden events mismatch", sim_hiddenEvents_0, hiddenEvents[0], tolerance);
-        assertEquals("Type 1 hidden events mismatch", sim_hiddenEvents_1, hiddenEvents[1], tolerance);
+        assertEquals(sim_hiddenEvents_0, hiddenEvents[0], tolerance, "Type 0 hidden events mismatch");
+        assertEquals(sim_hiddenEvents_1, hiddenEvents[1], tolerance, "Type 1 hidden events mismatch");
     }
 
 
@@ -202,8 +203,8 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "t1[&state=0]:1.0;";
         Tree tree = new TreeParser(newick, false,false,true,0);
-        RealParameter origin = new RealParameter("2.0");
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.0");
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
@@ -211,25 +212,24 @@ public class MultiTypeHiddenEventsTest {
                 "processLength", origin,
                 "birthRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("3.0 3.0"), 2),
+                        Params.real("3.0 3.0"), 2),
                 "deathRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.5 0.5"), 2),
+                        Params.real("0.5 0.5"), 2),
                 "birthRateAmongDemes", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.0 0.0"), 2),
+                        Params.real("0.0 0.0"), 2),
                 "migrationRate", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.0 0.0"), 2),
+                        Params.real("0.0 0.0"), 2),
                 "samplingRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
+                        Params.real("0.0"), 2),
                 "removalProb", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
-                "rhoSampling", new TimedParameter(
-                        origin,
-                        new RealParameter("0.2 0.0"), 2));
+                        Params.real("0.0"), 2),
+                "rhoSampling", new TimedParameter(Params.asVector(origin),
+                        Params.real("0.2 0.0"), 2));
 
         // Integrate p0ge system
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
@@ -252,8 +252,8 @@ public class MultiTypeHiddenEventsTest {
         BranchSpikePrior bsp = new BranchSpikePrior();
         bsp.initByName("parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
@@ -267,7 +267,7 @@ public class MultiTypeHiddenEventsTest {
                         false, true, pool, weightOfNodeSubTree, 0.1
                 );
 
-        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getDoubleValues(), parameterization,1.0, 2.0);
+        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getValues(), parameterization,1.0, 2.0);
 
         double[] hiddenEvents = multitypeHiddenEvents.getExpNrHiddenEventsForNode(nodeNr);
 
@@ -279,8 +279,8 @@ public class MultiTypeHiddenEventsTest {
         double sim_hiddenEvents_1 = 0.0;
         double tolerance = 1e-2;
 
-        assertEquals("Type 0 hidden events mismatch", sim_hiddenEvents_0, hiddenEvents[0], tolerance);
-        assertEquals("Type 1 hidden events mismatch", sim_hiddenEvents_1, hiddenEvents[1], tolerance);
+        assertEquals(sim_hiddenEvents_0, hiddenEvents[0], tolerance, "Type 0 hidden events mismatch");
+        assertEquals(sim_hiddenEvents_1, hiddenEvents[1], tolerance, "Type 1 hidden events mismatch");
     }
 
 
@@ -290,8 +290,8 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "t1[&state=0]:1.0;";
         Tree tree = new TreeParser(newick, false,false,true,0);
-        RealParameter origin = new RealParameter("1.0");
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("1.0");
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
@@ -299,25 +299,24 @@ public class MultiTypeHiddenEventsTest {
                 "processLength", origin,
                 "birthRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("3.0 3.0"), 2),
+                        Params.real("3.0 3.0"), 2),
                 "deathRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.5 0.5"), 2),
+                        Params.real("0.5 0.5"), 2),
                 "birthRateAmongDemes", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.0 0.0"), 2),
+                        Params.real("0.0 0.0"), 2),
                 "migrationRate", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.4 0.4"), 2),
+                        Params.real("0.4 0.4"), 2),
                 "samplingRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
+                        Params.real("0.0"), 2),
                 "removalProb", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
-                "rhoSampling", new TimedParameter(
-                        origin,
-                        new RealParameter("0.2 0.0"), 2));
+                        Params.real("0.0"), 2),
+                "rhoSampling", new TimedParameter(Params.asVector(origin),
+                        Params.real("0.2 0.0"), 2));
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
 
@@ -340,8 +339,8 @@ public class MultiTypeHiddenEventsTest {
         BranchSpikePrior bsp = new BranchSpikePrior();
         bsp.initByName("parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
@@ -356,7 +355,7 @@ public class MultiTypeHiddenEventsTest {
                         weightOfNodeSubTree, 0.1
                 );
 
-        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getDoubleValues(), parameterization,0.0, 1.0);
+        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getValues(), parameterization,0.0, 1.0);
 
         double[] hiddenEvents = multitypeHiddenEvents.getExpNrHiddenEventsForNode(nodeNr);
 
@@ -368,8 +367,8 @@ public class MultiTypeHiddenEventsTest {
         double sim_hiddenEvents_1 = 1.67156;
         double tolerance = 1e-2;
 
-        assertEquals("Type 0 hidden events mismatch", sim_hiddenEvents_0, hiddenEvents[0], tolerance);
-        assertEquals("Type 1 hidden events mismatch", sim_hiddenEvents_1, hiddenEvents[1], tolerance);
+        assertEquals(sim_hiddenEvents_0, hiddenEvents[0], tolerance, "Type 0 hidden events mismatch");
+        assertEquals(sim_hiddenEvents_1, hiddenEvents[1], tolerance, "Type 1 hidden events mismatch");
     }
 
 
@@ -379,8 +378,8 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "t1[&state=0]:1.0;";
         Tree tree = new TreeParser(newick, false,false,true,0);
-        RealParameter origin = new RealParameter("1.0");
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("1.0");
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
@@ -388,25 +387,24 @@ public class MultiTypeHiddenEventsTest {
                 "processLength", origin,
                 "birthRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("3.0 3.0"), 2),
+                        Params.real("3.0 3.0"), 2),
                 "deathRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.5 0.5"), 2),
+                        Params.real("0.5 0.5"), 2),
                 "birthRateAmongDemes", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.0 0.0"), 2),
+                        Params.real("0.0 0.0"), 2),
                 "migrationRate", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.9 0.23"), 2),
+                        Params.real("0.9 0.23"), 2),
                 "samplingRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
+                        Params.real("0.0"), 2),
                 "removalProb", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
-                "rhoSampling", new TimedParameter(
-                        origin,
-                        new RealParameter("0.2 0.0"), 2));
+                        Params.real("0.0"), 2),
+                "rhoSampling", new TimedParameter(Params.asVector(origin),
+                        Params.real("0.2 0.0"), 2));
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
 
@@ -429,8 +427,8 @@ public class MultiTypeHiddenEventsTest {
         BranchSpikePrior bsp = new BranchSpikePrior();
         bsp.initByName("parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density);
 
@@ -444,7 +442,7 @@ public class MultiTypeHiddenEventsTest {
                         false, true, pool, weightOfNodeSubTree, 0.1
                 );
 
-        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getDoubleValues(), parameterization,0.0, 1.0);
+        multitypeHiddenEvents.integrateSingleLineage(startTypePriorProbs.getValues(), parameterization,0.0, 1.0);
 
         double[] hiddenEvents = multitypeHiddenEvents.getExpNrHiddenEventsForNode(nodeNr);
 
@@ -456,8 +454,8 @@ public class MultiTypeHiddenEventsTest {
         double sim_hiddenEvents_1 = 1.80522;
         double tolerance = 1e-2;
 
-        assertEquals("Type 0 hidden events mismatch", sim_hiddenEvents_0, hiddenEvents[0], tolerance);
-        assertEquals("Type 1 hidden events mismatch", sim_hiddenEvents_1, hiddenEvents[1], tolerance);
+        assertEquals(sim_hiddenEvents_0, hiddenEvents[0], tolerance, "Type 0 hidden events mismatch");
+        assertEquals(sim_hiddenEvents_1, hiddenEvents[1], tolerance, "Type 1 hidden events mismatch");
     }
 
 
@@ -468,18 +466,18 @@ public class MultiTypeHiddenEventsTest {
                 + "(t3[&type=1]:3,t4[&type=1]:4):0.5):1.3):0.0;";
         Tree tree = new TreeParser(newick, false, false, true, 0);
 
-        RealParameter origin = new RealParameter("6.0");
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("6.0");
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(2),
                 "processLength", origin,
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("1.2 1.2"), 2),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0"), 2),
-                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.1 0.1"), 2),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.1"), 2),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("1.0"), 2)
+                "birthRate", new SkylineVectorParameter(null, Params.real("1.2 1.2"), 2),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0"), 2),
+                "migrationRate", new SkylineMatrixParameter(null, Params.real("0.1 0.1"), 2),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.1"), 2),
+                "removalProb", new SkylineVectorParameter(null, Params.real("1.0"), 2)
         );
 
         // Integrate p0/ge system
@@ -509,7 +507,7 @@ public class MultiTypeHiddenEventsTest {
                         // Store π trajectories for testing
                 );
 
-        multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(),
+        multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getValues(),
                 parameterization, 0.0);
 
 
@@ -538,8 +536,8 @@ public class MultiTypeHiddenEventsTest {
                     nodeNr, pi[0], pi[1], expected[i][0], expected[i][1]
             );
 
-            assertEquals("π₀ mismatch at node " + nodeNr, expected[i][0], pi[0], tolerance);
-            assertEquals("π₁ mismatch at node " + nodeNr, expected[i][1], pi[1], tolerance);
+            assertEquals(expected[i][0], pi[0], tolerance, "π₀ mismatch at node " + nodeNr);
+            assertEquals(expected[i][1], pi[1], tolerance, "π₁ mismatch at node " + nodeNr);
         }
     }
 
@@ -549,8 +547,8 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "(t1[&state=0] : 1.0, t2[&state=1] : 1.0);";
         Tree tree = new TreeParser(newick, false, false, true, 0);
-        RealParameter origin = new RealParameter("2.0");
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.0");
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
@@ -558,25 +556,24 @@ public class MultiTypeHiddenEventsTest {
                 "processLength", origin,
                 "birthRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("3.0 3.0"), 2),
+                        Params.real("3.0 3.0"), 2),
                 "deathRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.5 0.5"), 2),
+                        Params.real("0.5 0.5"), 2),
                 "birthRateAmongDemes", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.0 0.0"), 2),
+                        Params.real("0.0 0.0"), 2),
                 "migrationRate", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.2 0.3"), 2),
+                        Params.real("0.2 0.3"), 2),
                 "samplingRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
+                        Params.real("0.0"), 2),
                 "removalProb", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
-                "rhoSampling", new TimedParameter(
-                        origin,
-                        new RealParameter("0.2"), 2));
+                        Params.real("0.0"), 2),
+                "rhoSampling", new TimedParameter(Params.asVector(origin),
+                        Params.real("0.2"), 2));
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
 
@@ -619,7 +616,7 @@ public class MultiTypeHiddenEventsTest {
                             true, true, pool, weightOfNodeSubTree, 0.1
                     );
 
-            multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(),
+            multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getValues(),
                     parameterization, 0.0);
             ContinuousOutputModel model = multitypeHiddenEvents.getPiIntegrationResultsForNode(nodeNr);
 
@@ -638,8 +635,8 @@ public class MultiTypeHiddenEventsTest {
         double typedTreeLength_1 = 1.0295;
         double tolerance = 5e-3;
 
-        assertEquals("Type 0 edge length mismatch", typedTreeLength_0, totalTimeInType[0], tolerance);
-        assertEquals("Type 1 edge length mismatch", typedTreeLength_1, totalTimeInType[1], tolerance);
+        assertEquals(typedTreeLength_0, totalTimeInType[0], tolerance, "Type 0 edge length mismatch");
+        assertEquals(typedTreeLength_1, totalTimeInType[1], tolerance, "Type 1 edge length mismatch");
     }
 
 
@@ -648,8 +645,8 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "(t1[&state=0] : 1.0, t2[&state=1] : 1.0);";
         Tree tree = new TreeParser(newick, false, false, true, 0);
-        RealParameter origin = new RealParameter("2.0");
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.0");
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
@@ -657,25 +654,24 @@ public class MultiTypeHiddenEventsTest {
                 "processLength", origin,
                 "birthRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("3.0 3.0"), 2),
+                        Params.real("3.0 3.0"), 2),
                 "deathRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.5 0.5"), 2),
+                        Params.real("0.5 0.5"), 2),
                 "birthRateAmongDemes", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("1.5 2.0"), 2),
+                        Params.real("1.5 2.0"), 2),
                 "migrationRate", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.2 0.3"), 2),
+                        Params.real("0.2 0.3"), 2),
                 "samplingRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
+                        Params.real("0.0"), 2),
                 "removalProb", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2),
-                "rhoSampling", new TimedParameter(
-                        origin,
-                        new RealParameter("0.2"), 2));
+                        Params.real("0.0"), 2),
+                "rhoSampling", new TimedParameter(Params.asVector(origin),
+                        Params.real("0.2"), 2));
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
 
@@ -718,7 +714,7 @@ public class MultiTypeHiddenEventsTest {
                         true, true, pool, weightOfNodeSubTree, 0.1
                     );
 
-            multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(),
+            multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getValues(),
                     parameterization, 0.0);
             ContinuousOutputModel model = multitypeHiddenEvents.getPiIntegrationResultsForNode(nodeNr);
 
@@ -740,8 +736,8 @@ public class MultiTypeHiddenEventsTest {
         System.out.println("Type 0 edge length = " +  totalTimeInType[0]);
         System.out.println("Type 1 edge length = " +  totalTimeInType[1]);
 
-        assertEquals("Type 0 edge length mismatch", typedTreeLength_0, totalTimeInType[0], tolerance);
-        assertEquals("Type 1 edge length mismatch", typedTreeLength_1, totalTimeInType[1], tolerance);
+        assertEquals(typedTreeLength_0, totalTimeInType[0], tolerance, "Type 0 edge length mismatch");
+        assertEquals(typedTreeLength_1, totalTimeInType[1], tolerance, "Type 1 edge length mismatch");
     }
 
 
@@ -750,34 +746,33 @@ public class MultiTypeHiddenEventsTest {
 
     String newick = "(t1[&state=0] : 1.0, t2[&state=1] : 1.0);";
     Tree tree = new TreeParser(newick, false, false, true, 0);
-    RealParameter origin = new RealParameter("1.0001");
-    RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+    RealScalarParam<NonNegativeReal> origin = Params.scalar("1.0001");
+    SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
     Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(2),
                 "processLength", origin,
             "birthRate", new SkylineVectorParameter(
-                        new RealParameter("0.33 0.66"),
-                        new RealParameter("3.0 2.4 0.5 1.5 1.0 2.0"), 2),
+                        Params.real("0.33 0.66"),
+                        Params.real("3.0 2.4 0.5 1.5 1.0 2.0"), 2),
             "deathRate", new SkylineVectorParameter(
-                        new RealParameter("0.1 0.2"),
-                                new RealParameter("1.0 0.7 0.1 0.2 0.4 0.7"), 2),
+                        Params.real("0.1 0.2"),
+                                Params.real("1.0 0.7 0.1 0.2 0.4 0.7"), 2),
             "birthRateAmongDemes", new SkylineMatrixParameter(
                         null,
-                                new RealParameter("0.0 0.0"), 2),
+                                Params.real("0.0 0.0"), 2),
             "migrationRate", new SkylineMatrixParameter(
-                        new RealParameter("0.7 0.9"),
-                                new RealParameter("0.2 0.3 1.0 0.7 0.6 0.2"), 2),
+                        Params.real("0.7 0.9"),
+                                Params.real("0.2 0.3 1.0 0.7 0.6 0.2"), 2),
             "samplingRate", new SkylineVectorParameter(
                         null,
-                                new RealParameter("0.0"), 2),
+                                Params.real("0.0"), 2),
             "removalProb", new SkylineVectorParameter(
                         null,
-                                new RealParameter("0.0"), 2),
-            "rhoSampling", new TimedParameter(
-                        origin,
-                        new RealParameter("0.2"), 2));
+                                Params.real("0.0"), 2),
+            "rhoSampling", new TimedParameter(Params.asVector(origin),
+                        Params.real("0.2"), 2));
 
     BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
 
@@ -820,7 +815,7 @@ public class MultiTypeHiddenEventsTest {
                         true, true, pool, weightOfNodeSubTree, 0.1
                 );
 
-        multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(),
+        multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getValues(),
                 parameterization, 0.0);
         ContinuousOutputModel model = multitypeHiddenEvents.getPiIntegrationResultsForNode(nodeNr);
 
@@ -838,8 +833,8 @@ public class MultiTypeHiddenEventsTest {
         double typedTreeLength_1 = 0.793;
         double tolerance = 5e-3;
 
-        assertEquals("Type 0 edge length mismatch", typedTreeLength_0, totalTimeInType[0], tolerance);
-        assertEquals("Type 1 edge length mismatch", typedTreeLength_1, totalTimeInType[1], tolerance);
+        assertEquals(typedTreeLength_0, totalTimeInType[0], tolerance, "Type 0 edge length mismatch");
+        assertEquals(typedTreeLength_1, totalTimeInType[1], tolerance, "Type 1 edge length mismatch");
     }
 
     @Test
@@ -847,19 +842,19 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "(t1[&state=1]:1.5, t2[&state=1]:0.5);";
         Tree tree = new TreeParser(newick, false, false, true, 0);
-        RealParameter origin = new RealParameter("2.5");
-        RealParameter startTypePriorProbs = new RealParameter("1.0");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.5");
+        SimplexParam startTypePriorProbs = Params.simplex("1.0");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(1),
                 "processLength", origin,
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0"), 1),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0"), 1),
-                "birthRateAmongDemes", new SkylineMatrixParameter(null, new RealParameter("0.0"), 1),
-                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0"), 1),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5"), 1),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 1)
+                "birthRate", new SkylineVectorParameter(null, Params.real("2.0"), 1),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0"), 1),
+                "birthRateAmongDemes", new SkylineMatrixParameter(null, Params.real("0.0"), 1),
+                "migrationRate", new SkylineMatrixParameter(null, Params.real("0"), 1),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.5"), 1),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0"), 1)
         );
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
@@ -880,8 +875,8 @@ public class MultiTypeHiddenEventsTest {
         bsp.initByName(
                 "parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density
         );
@@ -900,7 +895,7 @@ public class MultiTypeHiddenEventsTest {
                             false, true, pool, weightOfNodeSubTree, 0.1
                     );
 
-            multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(),
+            multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getValues(),
                     parameterization, 0.0);
 
             double multiTypeResult = multitypeHiddenEvents.getExpNrHiddenEventsForNode(nodeNr)[0];
@@ -909,9 +904,8 @@ public class MultiTypeHiddenEventsTest {
             System.out.printf("Node %d: multi-type = %.10f, single-type = %.10f%n",
                     nodeNr, multiTypeResult, singleTypeResult);
 
-            assertEquals("Mismatch at node " + nodeNr + "single-type result = " + singleTypeResult
-                            + " does not match multi-type result = " +  multiTypeResult,
-                    singleTypeResult, multiTypeResult, tolerance);
+            assertEquals(singleTypeResult, multiTypeResult, tolerance, "Mismatch at node " + nodeNr + "single-type result = " + singleTypeResult
+                            + " does not match multi-type result = " +  multiTypeResult);
 
         }
     }
@@ -922,19 +916,19 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "(t1[&state=1]:1.5, t2[&state=1]:0.5);";
         Tree tree = new TreeParser(newick, false, false, true, 0);
-        RealParameter origin = new RealParameter("2.5");
-        RealParameter startTypePriorProbs = new RealParameter("1.0");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.5");
+        SimplexParam startTypePriorProbs = Params.simplex("1.0");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(1),
                 "processLength", origin,
-                "birthRate", new SkylineVectorParameter(new RealParameter("1.0"), new RealParameter("2.0 0.5"), 1),
-                "deathRate", new SkylineVectorParameter(new RealParameter("1.5"), new RealParameter("1.0 0.2"), 1),
-                "birthRateAmongDemes", new SkylineMatrixParameter(null, new RealParameter("0.0"), 1),
-                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.0"), 1),
-                "samplingRate", new SkylineVectorParameter(new RealParameter("2.0"), new RealParameter("0.5 1.8"), 1),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 1)
+                "birthRate", new SkylineVectorParameter(Params.real("1.0"), Params.real("2.0 0.5"), 1),
+                "deathRate", new SkylineVectorParameter(Params.real("1.5"), Params.real("1.0 0.2"), 1),
+                "birthRateAmongDemes", new SkylineMatrixParameter(null, Params.real("0.0"), 1),
+                "migrationRate", new SkylineMatrixParameter(null, Params.real("0.0"), 1),
+                "samplingRate", new SkylineVectorParameter(Params.real("2.0"), Params.real("0.5 1.8"), 1),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0"), 1)
         );
 
         // Integrate p0/ge system
@@ -957,8 +951,8 @@ public class MultiTypeHiddenEventsTest {
         bsp.initByName(
                 "parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "bdmDistr", density
         );
@@ -979,7 +973,7 @@ public class MultiTypeHiddenEventsTest {
                             0.1
                     );
 
-            multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(),
+            multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbs.getValues(),
                     parameterization, 0.0);
 
             double multiTypeResult = multitypeHiddenEvents.getExpNrHiddenEventsForNode(nodeNr)[0];
@@ -988,9 +982,8 @@ public class MultiTypeHiddenEventsTest {
             System.out.printf("Node %d: multi-type = %.10f, single-type = %.10f%n",
                     nodeNr, multiTypeResult, singleTypeResult);
 
-            assertEquals("Mismatch at node " + nodeNr + "single-type result = " + singleTypeResult
-                            + " does not match multi-type result = " +  multiTypeResult,
-                    singleTypeResult, multiTypeResult, tolerance);
+            assertEquals(singleTypeResult, multiTypeResult, tolerance, "Mismatch at node " + nodeNr + "single-type result = " + singleTypeResult
+                            + " does not match multi-type result = " +  multiTypeResult);
 
         }
     }
@@ -1001,22 +994,22 @@ public class MultiTypeHiddenEventsTest {
 
         String newick = "(t1[&state=1]:1.5, t2[&state=1]:0.5);";
         Tree tree = new TreeParser(newick, false, false, true, 0);
-        RealParameter origin = new RealParameter("2.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.5");
 
-        RealParameter startTypePriorProbsSingle = new RealParameter("1.0");
-        RealParameter startTypePriorProbsMulti = new RealParameter("0.5 0.5");
+        SimplexParam startTypePriorProbsSingle = Params.simplex("1.0");
+        SimplexParam startTypePriorProbsMulti = Params.simplex("0.5 0.5");
 
         // Single-type parameterization
         Parameterization paramSingle = new CanonicalParameterization();
         paramSingle.initByName(
                 "typeSet", new TypeSet(1),
                 "processLength", origin,
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0"), 1),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0"), 1),
-                "birthRateAmongDemes", new SkylineMatrixParameter(null, new RealParameter("0.0"), 1),
-                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.0"), 1),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5"), 1),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 1)
+                "birthRate", new SkylineVectorParameter(null, Params.real("2.0"), 1),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0"), 1),
+                "birthRateAmongDemes", new SkylineMatrixParameter(null, Params.real("0.0"), 1),
+                "migrationRate", new SkylineMatrixParameter(null, Params.real("0.0"), 1),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.5"), 1),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0"), 1)
         );
 
         BirthDeathMigrationDistribution densitySingle = new BirthDeathMigrationDistribution();
@@ -1036,8 +1029,8 @@ public class MultiTypeHiddenEventsTest {
         bspSingle.initByName(
                 "parameterization", paramSingle,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1"),
                 "startTypePriorProbs", startTypePriorProbsSingle,
                 "bdmDistr", densitySingle
         );
@@ -1048,12 +1041,12 @@ public class MultiTypeHiddenEventsTest {
                 "typeSet", new TypeSet(2),
                 "processLength", origin,
                 // All parameters except migration rates are symmetric across types
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0 2.0"), 2),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0 1.0"), 2),
-                "birthRateAmongDemes", new SkylineMatrixParameter(null, new RealParameter("0.0 0.0"), 2),
-                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.8 1.2"), 2),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5 0.5"), 2),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0 0.0"), 2)
+                "birthRate", new SkylineVectorParameter(null, Params.real("2.0 2.0"), 2),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0 1.0"), 2),
+                "birthRateAmongDemes", new SkylineMatrixParameter(null, Params.real("0.0 0.0"), 2),
+                "migrationRate", new SkylineMatrixParameter(null, Params.real("0.8 1.2"), 2),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.5 0.5"), 2),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0 0.0"), 2)
         );
 
         BirthDeathMigrationDistribution densityMulti = new BirthDeathMigrationDistribution();
@@ -1081,7 +1074,7 @@ public class MultiTypeHiddenEventsTest {
                         false, true, pool, weightOfNodeSubTree, 0.1
                 );
 
-        multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbsMulti.getDoubleValues(), paramMulti, 0.0);
+        multitypeHiddenEvents.integrateHiddenEvents(startTypePriorProbsMulti.getValues(), paramMulti, 0.0);
 
         // Equivalence comparison
         double tolerance = 1e-3;
@@ -1098,9 +1091,8 @@ public class MultiTypeHiddenEventsTest {
             System.out.printf("Node %d: multi-type total = %.10f, single-type = %.10f%n",
                     nodeNr, multiTypeResultTotal, singleTypeResult);
 
-            assertEquals("Mismatch at node " + nodeNr + ": single-type result = " + singleTypeResult
-                            + " does not match multi-type total result = " +  multiTypeResultTotal,
-                    singleTypeResult, multiTypeResultTotal, tolerance);
+            assertEquals(singleTypeResult, multiTypeResultTotal, tolerance, "Mismatch at node " + nodeNr + ": single-type result = " + singleTypeResult
+                            + " does not match multi-type total result = " +  multiTypeResultTotal);
         }
     }
 
@@ -1113,18 +1105,18 @@ public class MultiTypeHiddenEventsTest {
                 + "(t3[&type=1]:3,t4[&type=1]:4):0.5):1.3):0.0;";
         Tree tree = new TreeParser(newick, false, false, true, 0);
 
-        RealParameter origin = new RealParameter("8.0");
-        RealParameter startTypePriorProbs = new RealParameter("1.0 0.0");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("8.0");
+        SimplexParam startTypePriorProbs = Params.simplex("1.0 0.0");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(2),
                 "processLength", origin,
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("1.2 1.2"), 2),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0"), 2),
-                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.3 0.3"), 2),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.1"), 2),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("1.0"), 2)
+                "birthRate", new SkylineVectorParameter(null, Params.real("1.2 1.2"), 2),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0"), 2),
+                "migrationRate", new SkylineMatrixParameter(null, Params.real("0.3 0.3"), 2),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.1"), 2),
+                "removalProb", new SkylineVectorParameter(null, Params.real("1.0"), 2)
         );
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
@@ -1143,7 +1135,7 @@ public class MultiTypeHiddenEventsTest {
         MultiTypeHiddenEventsIntegrator integrator = new MultiTypeHiddenEventsIntegrator(
                 parameterization, tree, density.getIntegrationResults(),
                 1e-6, 1e-6, false, false, null, new double[tree.getNodeCount()], 0.1);
-        integrator.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(), parameterization, 0.0);
+        integrator.integrateHiddenEvents(startTypePriorProbs.getValues(), parameterization, 0.0);
         double[] piRoot = integrator.getPiAtNode(tree.getRoot().getNr());
 
         Randomizer.setSeed(42);
@@ -1169,27 +1161,27 @@ public class MultiTypeHiddenEventsTest {
 
         System.out.printf("Root -> π₁=%.4f (stochastic mapping %.4f)%n", piRoot[1], expectedPi1);
 
-        assertEquals("π₁ mismatch at root", expectedPi1, piRoot[1], 0.015);
-        assertEquals("π at root not normalised", 1.0, piRoot[0] + piRoot[1], 1e-8);
+        assertEquals(expectedPi1, piRoot[1], 0.015, "π₁ mismatch at root");
+        assertEquals(1.0, piRoot[0] + piRoot[1], 1e-8, "π at root not normalised");
     }
 
     // Two-tip tree used by the tests below; π trajectories are stored.
     private MultiTypeHiddenEventsIntegrator integrateTwoTipTree(Tree tree, String originValue,
                                                                String birthAmongDemes) {
-        RealParameter origin = new RealParameter(originValue);
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar(originValue);
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(2),
                 "processLength", origin,
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("3.0 3.0"), 2),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("0.5 0.5"), 2),
-                "birthRateAmongDemes", new SkylineMatrixParameter(null, new RealParameter(birthAmongDemes), 2),
-                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.2 0.3"), 2),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.0"), 2),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 2),
-                "rhoSampling", new TimedParameter(origin, new RealParameter("0.2"), 2));
+                "birthRate", new SkylineVectorParameter(null, Params.real("3.0 3.0"), 2),
+                "deathRate", new SkylineVectorParameter(null, Params.real("0.5 0.5"), 2),
+                "birthRateAmongDemes", new SkylineMatrixParameter(null, Params.real(birthAmongDemes), 2),
+                "migrationRate", new SkylineMatrixParameter(null, Params.real("0.2 0.3"), 2),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.0"), 2),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0"), 2),
+                "rhoSampling", new TimedParameter(Params.asVector(origin), Params.real("0.2"), 2));
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
         density.initByName(
@@ -1206,7 +1198,7 @@ public class MultiTypeHiddenEventsTest {
         MultiTypeHiddenEventsIntegrator integrator = new MultiTypeHiddenEventsIntegrator(
                 parameterization, tree, density.getIntegrationResults(),
                 1e-6, 1e-6, true, false, null, new double[tree.getNodeCount()], 0.1);
-        integrator.integrateHiddenEvents(startTypePriorProbs.getDoubleValues(), parameterization, 0.0);
+        integrator.integrateHiddenEvents(startTypePriorProbs.getValues(), parameterization, 0.0);
         return integrator;
     }
 
@@ -1232,8 +1224,8 @@ public class MultiTypeHiddenEventsTest {
         }
 
         // BDMM-Prime stochastic mapping (TypeMappedTree, 250,000 mappings)
-        assertEquals("Type 0 edge length mismatch", 0.9339, totalTimeInType[0], 5e-3);
-        assertEquals("Type 1 edge length mismatch", 1.0661, totalTimeInType[1], 5e-3);
+        assertEquals(0.9339, totalTimeInType[0], 5e-3, "Type 0 edge length mismatch");
+        assertEquals(1.0661, totalTimeInType[1], 5e-3, "Type 1 edge length mismatch");
     }
 
     // With birth among demes, the two daughter lineages can start in different types.
@@ -1251,9 +1243,9 @@ public class MultiTypeHiddenEventsTest {
             ContinuousOutputModel model = integrator.getPiIntegrationResultsForNode(nodeNr);
             model.setInterpolatedTime(1.0);
             double pi1 = model.getInterpolatedState()[1];
-            assertEquals("Daughter start π₁ mismatch for node " + nodeNr, expected[nodeNr], pi1, 5e-3);
+            assertEquals(expected[nodeNr], pi1, 5e-3, "Daughter start π₁ mismatch for node " + nodeNr);
         }
-        assertEquals("π₁ mismatch at root", 0.3662, integrator.getPiAtNode(2)[1], 5e-3);
+        assertEquals(0.3662, integrator.getPiAtNode(2)[1], 5e-3, "π₁ mismatch at root");
     }
 
 }

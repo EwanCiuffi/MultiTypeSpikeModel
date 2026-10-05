@@ -1,5 +1,7 @@
-<beast version="2.0"
-       namespace="beast.base.inference
+<beast version="2.8"
+       namespace="beast.base.spec.inference.parameter
+                 :beast.base.spec.inference.operator
+                 :beast.base.inference
                  :beast.base.inference.parameter
                  :beast.base.evolution.tree
                  :beast.base.evolution.alignment
@@ -10,7 +12,7 @@
                  :bdmmprime.mapping">
 
 
-        <startTypePriorProbs id="startTypePriorProbs" spec="RealParameter" value="0.5 0.5"/>
+        <startTypePriorProbs id="startTypePriorProbs" spec="beast.base.spec.inference.parameter.SimplexParam" value="0.5 0.5"/>
 
         <typeTraitSet id="typeTraitSet" spec="TraitSet" traitname="type" taxa="@taxonSet">
             t1=0,t2=0,t3=1,t4=1,t5=0
@@ -31,14 +33,14 @@
                    adjustTipHeights="false" newick="(t5:5.7,((t1:1,t2:2):1,(t3:3,t4:4):0.5):1.3):0.0;" offset="0"/>
 
 
-        <parameter id="origin" spec="parameter.RealParameter" name="stateNode" lower="0">6.0</parameter>
-        <parameter id="lambda" spec="parameter.RealParameter" name="stateNode" lower="0">0.75 1.5</parameter>
-        <parameter id="mu" spec="parameter.RealParameter" name="stateNode">1.0 1.5</parameter>
-        <parameter id="migrationRate" spec="parameter.RealParameter" name="stateNode" lower="0">0.5 0.5</parameter>
-        <parameter id="psi" spec="parameter.RealParameter" name="stateNode" lower="0">0.1 0.1</parameter>
-        <parameter id="r" spec="parameter.RealParameter" name="stateNode" lower="0">1.0 1.0</parameter>
-        <parameter id="spikes" spec="parameter.RealParameter" name="stateNode" lower="0">1</parameter>
-        <parameter id="spikeShape" spec="parameter.RealParameter" name="stateNode" lower="0.2" upper="10">0.2</parameter>
+        <parameter id="origin" spec="beast.base.spec.inference.parameter.RealScalarParam" domain="NonNegativeReal" name="stateNode">6.0</parameter>
+        <parameter id="lambda" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal" name="stateNode">0.75 1.5</parameter>
+        <parameter id="mu" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal" name="stateNode">1.0 1.5</parameter>
+        <parameter id="migrationRate" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal" name="stateNode">0.5 0.5</parameter>
+        <parameter id="psi" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal" name="stateNode">0.1 0.1</parameter>
+        <parameter id="r" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="UnitInterval" name="stateNode">1.0 1.0</parameter>
+        <parameter id="spikes" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal" name="stateNode">1</parameter>
+        <parameter id="spikeShape" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="PositiveReal" name="stateNode">0.2</parameter>
 
 
         </state>
@@ -48,7 +50,7 @@
                 <distribution id="bdmDistr" spec="bdmmprime.distribution.BirthDeathMigrationDistribution" conditionOnSurvival="true"
                           tree="@tree" storeIntegrationResults="true">
                     <parameterization id="parameterization" spec="CanonicalParameterization">
-                        <processLength spec="RealParameter" value="6.0"/>
+                        <processLength spec="beast.base.spec.inference.parameter.RealScalarParam" domain="NonNegativeReal" value="6.0"/>
                         <typeSet id="typeSet" spec="TypeSet" typeTraitSet="@typeTraitSet"/>
                         <birthRate spec="SkylineVectorParameter" skylineValues="@lambda"/>
                         <deathRate spec="SkylineVectorParameter" skylineValues="@mu"/>
@@ -60,16 +62,16 @@
                     <typeTraitSet idref="typeTraitSet"/>
                 </distribution>
 
-                <prior id="BranchSpikePrior" name="distribution" spec="multitypespike.distribution.BranchSpikePrior"
+                <distribution id="BranchSpikePrior" spec="multitypespike.distribution.BranchSpikePrior"
                        spikes="@spikes" spikeShape="@spikeShape" tree="@tree" parameterization="@parameterization"
                        startTypePriorProbs="@startTypePriorProbs" bdmDistr="@bdmDistr">
-                </prior>
+                </distribution>
 
             </distribution>
         </distribution>
 
 
-        <operator id="spikes.scale" spec="kernel.BactrianScaleOperator" parameter="@spikes" scaleFactor="0.1" weight="1.0"/>
+        <operator id="spikes.scale" spec="beast.base.spec.inference.operator.ScaleOperator" parameter="@spikes" scaleFactor="0.1" weight="1.0"/>
 
         <logger id="tracelog" spec="Logger" fileName="$(filebase).log" logEvery="1" model="@posterior" sort="smart">
             <log idref="spikes"/>

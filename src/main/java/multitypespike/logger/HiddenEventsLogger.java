@@ -1,12 +1,15 @@
 package multitypespike.logger;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import beast.base.core.Description;
-import beast.base.core.Function;
 import beast.base.core.Input;
 import beast.base.core.Loggable;
 import beast.base.evolution.tree.Node;
 import beast.base.inference.CalculationNode;
-import beast.base.inference.parameter.BooleanParameter;
+import beast.base.spec.domain.Real;
+import beast.base.spec.type.RealVector;
 import beast.base.util.Randomizer;
 import multitypespike.distribution.BranchSpikePrior;
 
@@ -16,7 +19,7 @@ import java.util.Arrays;
 
 @Description("Logs the number of hidden speciation events per branch: either a stochastic sample " +
         "from the posterior conditional distribution (default), or the analytic expected value (logExpectedValue=true)")
-public class HiddenEventsLogger extends CalculationNode implements Function, Loggable {
+public class HiddenEventsLogger extends CalculationNode implements RealVector<Real>, Loggable {
     final public Input<BranchSpikePrior> branchSpikePriorInput =
             new Input<>("branchSpikePrior", "Branch spike prior", Input.Validate.REQUIRED);
     final public Input<Boolean> logPerTypeInput = new Input<>(
@@ -51,19 +54,19 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
     @Override
     public void log(long sample, PrintStream out) {
         if (!logExpectedValue) sampleHiddenEvents();
-        for (int i = 0; i < this.getDimension(); i ++) {
-            out.print(this.getArrayValue(i) + "\t");
+        for (int i = 0; i < size(); i ++) {
+            out.print(get(i) + "\t");
         }
     }
 
     @Override
-    public int getDimension() {
+    public int size() {
         if(logPerType) return nTypes * nodeCount;
         else return nodeCount;
     }
 
     @Override
-    public double getArrayValue(int dim) {
+    public double get(int dim) {
         if (logExpectedValue) {
             if (nTypes == 1 || logPerType) {
                 return bsp.getExpectedHiddenEvents(dim);
@@ -96,7 +99,7 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
     private void sampleHiddenEvents() {
         if (sampledEvents == null) {
             sampledEvents = new double[nodeCount * nTypes];
-            dimRead = new boolean[getDimension()];
+            dimRead = new boolean[size()];
         }
         Arrays.fill(dimRead, false);
 
@@ -145,7 +148,7 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
     }
 
     private double getSpike(int nodeNr, int type) {
-        return bsp.spikesInput.get().getValue(nodeNr * nTypes + type);
+        return bsp.spikesInput.get().get(nodeNr * nTypes + type);
     }
 
     /**
@@ -175,6 +178,18 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
             logPk += logMu - Math.log(k + 1);
         }
         return k;
+    }
+
+    @Override
+    public Real getDomain() {
+        return Real.INSTANCE;
+    }
+
+    @Override
+    public List<Double> getElements() {
+        List<Double> elements = new ArrayList<>(size());
+        for (int i = 0; i < size(); i++) elements.add(get(i));
+        return elements;
     }
 
     @Override

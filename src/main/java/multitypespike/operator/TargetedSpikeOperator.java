@@ -7,7 +7,8 @@ import beast.base.core.Description;
 import beast.base.core.Input;
 import beast.base.inference.Operator;
 import beast.base.inference.StateNode;
-import beast.base.inference.parameter.RealParameter;
+import beast.base.spec.domain.NonNegativeReal;
+import beast.base.spec.inference.parameter.RealVectorParam;
 import beast.base.util.Randomizer;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
@@ -16,7 +17,7 @@ import multitypespike.distribution.BranchSpikePrior;
 @Description("Operator that draws and proposes new spike values on a branch directly from the prior.")
 public class TargetedSpikeOperator extends Operator {
 
-    public final Input<RealParameter> spikesInput = new Input<>("spikes",
+    public final Input<RealVectorParam<? extends NonNegativeReal>> spikesInput = new Input<>("spikes",
             "spikes associated with each branch", Input.Validate.REQUIRED);
 
     public final Input<BranchSpikePrior> branchSpikePriorInput = new Input<>("branchSpikePrior",
@@ -35,7 +36,7 @@ public class TargetedSpikeOperator extends Operator {
         // resolved on first use, once the spike prior has been set up
         if (nTypes == 0) nTypes = branchSpikePriorInput.get().nTypes;
 
-        final RealParameter spikes = spikesInput.get();
+        final RealVectorParam<? extends NonNegativeReal> spikes = spikesInput.get();
         final BranchSpikePrior prior = branchSpikePriorInput.get();
 
         // Choose a random node
@@ -47,7 +48,7 @@ public class TargetedSpikeOperator extends Operator {
         double[] sNew = new double[nTypes];
         double[] shapes = new double[nTypes];
         for (int i = 0; i < nTypes; i++) {
-            sOld[i] = spikes.getValue(nodeNr * nTypes + i);
+            sOld[i] = spikes.get(nodeNr * nTypes + i);
             shapes[i] = prior.getSpikeShape(i);
         }
 
@@ -59,7 +60,7 @@ public class TargetedSpikeOperator extends Operator {
                 // Draw directly from Exponential(1.0) / Gamma(1,1)
                 sNew[i] = Randomizer.nextExponential(1.0);
                 if (sNew[i] == 0.0) sNew[i] = 1e-15;
-                spikes.setValue(nodeNr * nTypes + i, sNew[i]);
+                spikes.set(nodeNr * nTypes + i, sNew[i]);
 
                 // Log density of Exp(1.0) is -x
                 logQOld += -sOld[i];
@@ -109,7 +110,7 @@ public class TargetedSpikeOperator extends Operator {
                 sNew[i] = Randomizer.nextGamma(shapes[i] * nSpikes, shapes[i]);
                 if (sNew[i] == 0.0) sNew[i] = 1e-15;
             }
-            spikes.setValue(nodeNr * nTypes + i, sNew[i]);
+            spikes.set(nodeNr * nTypes + i, sNew[i]);
         }
 
         // Calculate Hastings Ratio matching the joint node prior

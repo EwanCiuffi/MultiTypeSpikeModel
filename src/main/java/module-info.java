@@ -1,8 +1,6 @@
 open module multitypespike {
     requires beast.pkgmgmt;
     requires beast.base;
-    requires static beast.fx;
-    requires static javafx.controls;
     requires sampled.ancestors;
     requires bdmmprime;
     requires commons.math3;

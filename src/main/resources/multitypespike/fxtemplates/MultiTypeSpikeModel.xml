@@ -1,10 +1,11 @@
-<beast version='2.0'
-       namespace='beast.app.beauti:beast.pkgmgmt:beast.base.core:beast.base.inference:beast.base.evolution.branchratemodel:beast.base.evolution.speciation:beast.base.evolution.tree.coalescent:beast.base.util:beast.base.math:beast.evolution.nuc:beast.base.evolution.operator:beast.base.inference.operator:beast.base.evolution.sitemodel:beast.base.evolution.substitutionmodel:beast.base.evolution.likelihood:beast.evolution:beast.base.math.distributions:orc.operators:orc.ner'>
+<beast version='2.8'
+       namespace='beast.base.spec.inference.parameter:beast.base.spec.inference.operator:beast.base.spec.inference.distribution:beast.base.spec.evolution.sitemodel:beast.base.spec.evolution.likelihood:beast.base.spec.evolution.operator:beast.base.spec.evolution.substitutionmodel:beast.base.spec.evolution.branchratemodel:beast.base.spec.domain:beastfx.app.beauti:beast.pkgmgmt:beast.base.core:beast.base.inference:beast.base.evolution.alignment:beast.base.evolution.tree:beast.base.inference.operator:beast.base.evolution.operator'>
 
     <mergewith point='clockModelTemplates'>
 
         <!-- Relaxed clock with type-dependent spikes of change at branching events.
-             Uses the BDMM-Prime tree prior of the same partition. -->
+             Uses the BDMM-Prime tree prior of the same partition; the spike prior switches on that
+             tree prior's stored integration results. -->
         <subtemplate id='MultiTypeSpikeClock (needs BDMM-Prime)' class='multitypespike.clockmodel.PunctuatedClockModel'
                      mainid='MultiTypeSpikeClock.c:$(n)'
                      suppressInputs='
@@ -23,23 +24,22 @@
                      multitypespike.distribution.BranchSpikePrior.relTolerance,
                      multitypespike.distribution.BranchSpikePrior.absTolerance,
                      multitypespike.distribution.BranchSpikePrior.parallelize,
-                     multitypespike.distribution.BranchSpikePrior.parallelizationFactor,
+                     multitypespike.distribution.BranchSpikePrior.minimalProportionForParallelization,
                      multitypespike.logger.SpikeLogger.clock,
-                     multitypespike.logger.HiddenEventsLogger.branchSpikePrior,
-                     multitypespike.logger.HiddenEventsLogger.indicator'
+                     multitypespike.logger.HiddenEventsLogger.branchSpikePrior'
                      hmc='MultiTypeSpikeClock/clock.rate/=StrictClock/clock.rate,
                           MTSMclockRate/index/=Priors/ClockPrior/'>
             <![CDATA[
 
-            <!-- Parameters. branchRates has no lower bound: with nonCentered="true" it holds N(0,1) deviates. -->
-            <parameter id="MTSMclockRate.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0">1</parameter>
-            <parameter id="MTSMclockSD.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0">0.5</parameter>
-            <parameter id="MTSMbranchRates.c:$(n)" spec="parameter.RealParameter" name="stateNode" dimension="1">1</parameter>
-            <parameter id="MTSMspikeMean.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0">0.01</parameter>
-            <parameter id="MTSMspikeMeanPriorMean.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0" estimate="false">0.01</parameter>
-            <parameter id="MTSMspikeShape.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0.2">2</parameter>
-            <parameter id="MTSMlatentSpikes.c:$(n)" spec="parameter.RealParameter" name="stateNode" lower="0" dimension="1">1</parameter>
-            <parameter id="MTSMindicator.c:$(n)" spec="parameter.BooleanParameter" name="stateNode" estimate="false">1</parameter>
+            <!-- Parameters. branchRates has the Real domain: with nonCentered="true" it holds N(0,1) deviates. -->
+            <parameter id="MTSMclockRate.c:$(n)" spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" name="stateNode">1.0</parameter>
+            <parameter id="MTSMclockSD.c:$(n)" spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" name="stateNode">0.5</parameter>
+            <parameter id="MTSMbranchRates.c:$(n)" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="Real" name="stateNode" dimension="1">1.0</parameter>
+            <parameter id="MTSMspikeMean.c:$(n)" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="PositiveReal" name="stateNode" dimension="1">0.01</parameter>
+            <parameter id="MTSMspikeMeanPriorMean.c:$(n)" spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" name="stateNode" estimate="false">0.01</parameter>
+            <parameter id="MTSMspikeShape.c:$(n)" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="PositiveReal" name="stateNode" dimension="1">2.0</parameter>
+            <parameter id="MTSMlatentSpikes.c:$(n)" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal" name="stateNode" dimension="1">1.0</parameter>
+            <parameter id="MTSMindicator.c:$(n)" spec="beast.base.spec.inference.parameter.BoolVectorParam" name="stateNode" estimate="false" dimension="1">true</parameter>
 
             <!-- Clock model -->
             <branchRateModel id="MultiTypeSpikeClock.c:$(n)" spec="multitypespike.clockmodel.PunctuatedClockModel"
@@ -48,46 +48,47 @@
                              indicator="@MTSMindicator.c:$(n)" relaxed="true"/>
 
             <!-- Spike prior; linked to the BDMM-Prime tree prior by the bdmDistr connector below -->
-            <prior id="MTSMbranchSpikePrior.c:$(n)" name="distribution" spec="multitypespike.distribution.BranchSpikePrior"
-                   tree="@Tree.t:$(n)" spikes="@MTSMlatentSpikes.c:$(n)" spikeShape="@MTSMspikeShape.c:$(n)"/>
+            <distribution id="MTSMbranchSpikePrior.c:$(n)" spec="multitypespike.distribution.BranchSpikePrior"
+                          tree="@Tree.t:$(n)" spikes="@MTSMlatentSpikes.c:$(n)" spikeShape="@MTSMspikeShape.c:$(n)"/>
 
             <!-- Priors -->
-            <prior id="MTSMclockRatePrior.c:$(n)" name="distribution" x="@MTSMclockRate.c:$(n)">
-                <Gamma name="distr">
-                    <parameter name="alpha" value="10" estimate="false" lower="0"/>
-                    <parameter name="beta" value="0.01" estimate="false" lower="0"/>
-                </Gamma>
-            </prior>
-            <prior id="MTSMclockSDPrior.c:$(n)" name="distribution" x="@MTSMclockSD.c:$(n)">
-                <Gamma name="distr">
-                    <parameter name="alpha" value="5" estimate="false" lower="0"/>
-                    <parameter name="beta" value="0.05" estimate="false" lower="0"/>
-                </Gamma>
-            </prior>
+            <distribution id="MTSMclockRatePrior.c:$(n)" spec="beast.base.spec.inference.distribution.Gamma" param="@MTSMclockRate.c:$(n)">
+                <alpha spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="10" estimate="false"/>
+                <theta spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="0.01" estimate="false"/>
+            </distribution>
+            <distribution id="MTSMclockSDPrior.c:$(n)" spec="beast.base.spec.inference.distribution.Gamma" param="@MTSMclockSD.c:$(n)">
+                <alpha spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="5" estimate="false"/>
+                <theta spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="0.05" estimate="false"/>
+            </distribution>
             <!-- Exactly one branch-rate prior is used, depending on nonCentered. The centred mean stays 1
                  for identifiability against the clock rate. -->
-            <prior id="MTSMbranchRatePriorCentered.c:$(n)" name="distribution" x="@MTSMbranchRates.c:$(n)">
-                <LogNormal name="distr" meanInRealSpace="true" M="1" S="@MTSMclockSD.c:$(n)"/>
-            </prior>
-            <prior id="MTSMbranchRatePriorNonCentered.c:$(n)" name="distribution" x="@MTSMbranchRates.c:$(n)">
-                <Normal name="distr" mean="0" sigma="1"/>
-            </prior>
-            <prior id="MTSMspikeMeanPrior.c:$(n)" name="distribution" x="@MTSMspikeMean.c:$(n)">
-                <LogNormal name="distr" meanInRealSpace="true" M="@MTSMspikeMeanPriorMean.c:$(n)">
-                    <parameter name="S" value="0.6" estimate="false" lower="0"/>
-                </LogNormal>
-            </prior>
-            <prior id="MTSMspikeMeanPriorMeanPrior.c:$(n)" name="distribution" x="@MTSMspikeMeanPriorMean.c:$(n)">
-                <Exponential name="distr">
-                    <parameter name="mean" value="0.01" estimate="false" lower="0"/>
-                </Exponential>
-            </prior>
-            <prior id="MTSMspikeShapePrior.c:$(n)" name="distribution" x="@MTSMspikeShape.c:$(n)">
-                <LogNormal name="distr" meanInRealSpace="true">
-                    <parameter name="M" value="2" estimate="false" lower="0"/>
-                    <parameter name="S" value="0.5" estimate="false" lower="0"/>
-                </LogNormal>
-            </prior>
+            <distribution id="MTSMbranchRatePriorCentered.c:$(n)" spec="beast.base.spec.inference.distribution.IID" param="@MTSMbranchRates.c:$(n)">
+                <distr spec="beast.base.spec.inference.distribution.LogNormal" meanInRealSpace="true">
+                    <M spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="1" estimate="false"/>
+                    <S idref="MTSMclockSD.c:$(n)"/>
+                </distr>
+            </distribution>
+            <distribution id="MTSMbranchRatePriorNonCentered.c:$(n)" spec="beast.base.spec.inference.distribution.IID" param="@MTSMbranchRates.c:$(n)">
+                <distr spec="beast.base.spec.inference.distribution.Normal">
+                    <mean spec="beast.base.spec.inference.parameter.RealScalarParam" domain="Real" value="0" estimate="false"/>
+                    <sigma spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="1" estimate="false"/>
+                </distr>
+            </distribution>
+            <distribution id="MTSMspikeMeanPrior.c:$(n)" spec="beast.base.spec.inference.distribution.IID" param="@MTSMspikeMean.c:$(n)">
+                <distr spec="beast.base.spec.inference.distribution.LogNormal" meanInRealSpace="true">
+                    <M idref="MTSMspikeMeanPriorMean.c:$(n)"/>
+                    <S spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="0.6" estimate="false"/>
+                </distr>
+            </distribution>
+            <distribution id="MTSMspikeMeanPriorMeanPrior.c:$(n)" spec="beast.base.spec.inference.distribution.Exponential" param="@MTSMspikeMeanPriorMean.c:$(n)">
+                <mean spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="0.01" estimate="false"/>
+            </distribution>
+            <distribution id="MTSMspikeShapePrior.c:$(n)" spec="beast.base.spec.inference.distribution.IID" param="@MTSMspikeShape.c:$(n)">
+                <distr spec="beast.base.spec.inference.distribution.LogNormal" meanInRealSpace="true">
+                    <M spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="2" estimate="false"/>
+                    <S spec="beast.base.spec.inference.parameter.RealScalarParam" domain="PositiveReal" value="0.5" estimate="false"/>
+                </distr>
+            </distribution>
 
             <!-- Spike operators -->
             <operator id="MTSMSpikeFlipOperator.c:$(n)" spec="multitypespike.operator.SpikeFlipOperator"
@@ -99,30 +100,26 @@
             <!-- Assumes positive rate multipliers, so only used when nonCentered="false" -->
             <operator id="MTSMSpikeUpRateDown.c:$(n)" spec="multitypespike.operator.SpikeUpDownOperator"
                       parameter="@MTSMbranchRates.c:$(n)" spikes="@MTSMlatentSpikes.c:$(n)" scaleFactor="0.1" weight="20.0"/>
-            <operator id="MTSMlatentSpikesScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMlatentSpikes.c:$(n)" scaleFactor="0.1" weight="30.0"/>
+            <operator id="MTSMlatentSpikesScale.c:$(n)" spec="beast.base.spec.inference.operator.ScaleOperator" parameter="@MTSMlatentSpikes.c:$(n)" scaleFactor="0.1" weight="30.0"/>
 
             <!-- Parameter operators -->
-            <operator id="MTSMclockRateScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMclockRate.c:$(n)" scaleFactor="0.1" weight="5.0"/>
-            <operator id="MTSMclockSDScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMclockSD.c:$(n)" scaleFactor="0.1" weight="5.0"/>
-            <operator id="MTSMspikeMeanScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMspikeMean.c:$(n)" scaleFactor="0.1" weight="10.0"/>
-            <operator id="MTSMspikeMeanPriorMeanScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMspikeMeanPriorMean.c:$(n)" scaleFactor="0.1" weight="5.0"/>
-            <operator id="MTSMspikeShapeScale.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMspikeShape.c:$(n)" scaleFactor="0.1" weight="10.0"/>
-            <operator id="MTSMBitFlipOperator.c:$(n)" spec="BitFlipOperator" uniform="true" parameter="@MTSMindicator.c:$(n)" weight="1.0"/>
+            <operator id="MTSMclockRateScale.c:$(n)" spec="beast.base.spec.inference.operator.ScaleOperator" parameter="@MTSMclockRate.c:$(n)" scaleFactor="0.1" weight="5.0"/>
+            <operator id="MTSMclockSDScale.c:$(n)" spec="beast.base.spec.inference.operator.ScaleOperator" parameter="@MTSMclockSD.c:$(n)" scaleFactor="0.1" weight="5.0"/>
+            <operator id="MTSMspikeMeanScale.c:$(n)" spec="beast.base.spec.inference.operator.ScaleOperator" parameter="@MTSMspikeMean.c:$(n)" scaleFactor="0.1" weight="10.0"/>
+            <operator id="MTSMspikeMeanPriorMeanScale.c:$(n)" spec="beast.base.spec.inference.operator.ScaleOperator" parameter="@MTSMspikeMeanPriorMean.c:$(n)" scaleFactor="0.1" weight="5.0"/>
+            <operator id="MTSMspikeShapeScale.c:$(n)" spec="beast.base.spec.inference.operator.ScaleOperator" parameter="@MTSMspikeShape.c:$(n)" scaleFactor="0.1" weight="10.0"/>
+            <operator id="MTSMBitFlipOperator.c:$(n)" spec="beast.base.spec.inference.operator.BitFlipOperator" uniform="true" parameter="@MTSMindicator.c:$(n)" weight="1.0"/>
 
             <!-- Branch-rate operators; the scale operator is added below only when nonCentered="false" -->
-            <operator id="MTSMAdaptableOperatorSamplerRatesInternal.c:$(n)" spec="AdaptableOperatorSampler" weight="20.0">
+            <operator id="MTSMAdaptableOperatorSamplerRatesInternal.c:$(n)" spec="beast.base.spec.evolution.operator.AdaptableOperatorSampler" weight="20.0">
                 <parameter idref="MTSMbranchRates.c:$(n)"/>
                 <tree idref="Tree.t:$(n)"/>
-                <operator id="MTSMORCRatesRandomWalk.c:tree.c:$(n)" spec="operator.kernel.BactrianRandomWalkOperator" parameter="@MTSMbranchRates.c:$(n)" scaleFactor="0.1" weight="1.0">
-                    <kernelDistribution spec="operator.kernel.KernelDistribution$Bactrian"/>
-                </operator>
+                <operator id="MTSMORCRatesRandomWalk.c:tree.c:$(n)" spec="beast.base.spec.inference.operator.RealRandomWalkOperator" parameter="@MTSMbranchRates.c:$(n)" scaleFactor="0.1" weight="1.0"/>
             </operator>
-            <operator id="MTSMORCRatesScale.c:tree.c:$(n)" spec="kernel.BactrianScaleOperator" parameter="@MTSMbranchRates.c:$(n)" scaleFactor="0.5" upper="10.0" weight="1.0">
-                <kernelDistribution spec="operator.kernel.KernelDistribution$Bactrian"/>
-            </operator>
+            <operator id="MTSMORCRatesScale.c:tree.c:$(n)" spec="beast.base.spec.inference.operator.ScaleOperator" parameter="@MTSMbranchRates.c:$(n)" scaleFactor="0.5" upper="10.0" weight="1.0"/>
 
             <!-- Loggers -->
-            <log id="MTSMrateStat.c:$(n)" spec="beast.base.evolution.RateStatistic" tree="@Tree.t:$(n)" branchratemodel="@MultiTypeSpikeClock.c:$(n)"/>
+            <log id="MTSMrateStat.c:$(n)" spec="beast.base.spec.evolution.RateStatistic" tree="@Tree.t:$(n)" branchratemodel="@MultiTypeSpikeClock.c:$(n)"/>
             <log id="MTSMSaltativeProportionLogger.c:$(n)" spec="multitypespike.logger.SaltativeProportionLogger" tree="@Tree.t:$(n)" clock="@MultiTypeSpikeClock.c:$(n)"/>
             <log id="MTSMSpikeLogger.c:$(n)" spec="multitypespike.logger.SpikeLogger" clock="@MultiTypeSpikeClock.c:$(n)"/>
             <log id="MTSMHiddenEventsLogger.c:$(n)" spec="multitypespike.logger.HiddenEventsLogger" branchSpikePrior="@MTSMbranchSpikePrior.c:$(n)"/>

@@ -5,21 +5,25 @@ import bdmmprime.parameterization.*;
 import beast.base.evolution.alignment.Alignment;
 import beast.base.evolution.alignment.Sequence;
 import beast.base.evolution.tree.*;
-import beast.base.evolution.tree.coalescent.ConstantPopulation;
-import beast.base.evolution.tree.coalescent.RandomTree;
-import beast.base.inference.parameter.RealParameter;
+import beast.base.spec.evolution.tree.coalescent.ConstantPopulation;
+import beast.base.spec.evolution.tree.coalescent.RandomTree;
+import beast.base.spec.domain.NonNegativeReal;
+import beast.base.spec.domain.PositiveReal;
+import beast.base.spec.inference.parameter.RealScalarParam;
+import beast.base.spec.inference.parameter.SimplexParam;
+import test.multitypespike.Params;
 import beast.base.util.Randomizer;
 import multitypespike.distribution.BranchSpikePrior;
 import multitypespike.logger.HiddenEventsLogger;
-import org.apache.commons.math.distribution.GammaDistributionImpl;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
-import static junit.framework.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class BranchSpikePriorTest {
 
@@ -29,17 +33,17 @@ public class BranchSpikePriorTest {
 
         String newick = "(t1[&state=1]:1.5, t2[&state=1]:0.5);";
         Tree tree = new TreeParser(newick, false, false, true, 0);
-        RealParameter origin = new RealParameter("2.5");
-        RealParameter startTypePriorProbs = new RealParameter("1.0");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.5");
+        SimplexParam startTypePriorProbs = Params.simplex("1.0");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(1),
                 "processLength", origin,
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0"), 1),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0"), 1),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5"), 1),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 1)
+                "birthRate", new SkylineVectorParameter(null, Params.real("2.0"), 1),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0"), 1),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.5"), 1),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0"), 1)
         );
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
@@ -59,8 +63,8 @@ public class BranchSpikePriorTest {
         bsp.initByName(
                 "parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "useAnalyticalSingleTypeSolution", false,
                 "bdmDistr", density,
@@ -73,8 +77,8 @@ public class BranchSpikePriorTest {
         bsp.initByName(
                 "parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "useAnalyticalSingleTypeSolution", true,
                 "bdmDistr", density,
@@ -84,9 +88,8 @@ public class BranchSpikePriorTest {
 
         double tolerance = 1e-3;
 
-        assertEquals("Mismatch:"  + "single-type result = " + singleTypeResult
-                        + " does not match multi-type result = " +  multiTypeResult,
-                singleTypeResult, multiTypeResult, tolerance);
+        assertEquals(singleTypeResult, multiTypeResult, tolerance, "Mismatch:"  + "single-type result = " + singleTypeResult
+                        + " does not match multi-type result = " +  multiTypeResult);
 
     }
 
@@ -96,17 +99,17 @@ public class BranchSpikePriorTest {
 
         String newick = "(t1[&state=1]:1.5, t2[&state=1]:0.5);";
         Tree tree = new TreeParser(newick, false, false, true, 0);
-        RealParameter origin = new RealParameter("2.5");
-        RealParameter startTypePriorProbs = new RealParameter("1.0");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.5");
+        SimplexParam startTypePriorProbs = Params.simplex("1.0");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(1),
                 "processLength", origin,
-                "birthRate", new SkylineVectorParameter(new RealParameter("1.0"), new RealParameter("2.0 0.5"), 1),
-                "deathRate", new SkylineVectorParameter(new RealParameter("1.5"), new RealParameter("1.0 0.2"), 1),
-                "samplingRate", new SkylineVectorParameter(new RealParameter("2.0"), new RealParameter("0.5 1.8"), 1),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 1)
+                "birthRate", new SkylineVectorParameter(Params.real("1.0"), Params.real("2.0 0.5"), 1),
+                "deathRate", new SkylineVectorParameter(Params.real("1.5"), Params.real("1.0 0.2"), 1),
+                "samplingRate", new SkylineVectorParameter(Params.real("2.0"), Params.real("0.5 1.8"), 1),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0"), 1)
         );
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
@@ -126,8 +129,8 @@ public class BranchSpikePriorTest {
         bsp.initByName(
                 "parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "useAnalyticalSingleTypeSolution", false,
                 "bdmDistr", density,
@@ -139,8 +142,8 @@ public class BranchSpikePriorTest {
         bsp.initByName(
                 "parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "startTypePriorProbs", startTypePriorProbs,
                 "useAnalyticalSingleTypeSolution", true,
                 "bdmDistr", density,
@@ -150,9 +153,8 @@ public class BranchSpikePriorTest {
 
         double tolerance = 1e-3;
 
-        assertEquals("Mismatch:"  + "single-type result = " + singleTypeResult
-                        + " does not match multi-type result = " +  multiTypeResult,
-                singleTypeResult, multiTypeResult, tolerance);
+        assertEquals(singleTypeResult, multiTypeResult, tolerance, "Mismatch:"  + "single-type result = " + singleTypeResult
+                        + " does not match multi-type result = " +  multiTypeResult);
 
     }
 
@@ -164,16 +166,16 @@ public class BranchSpikePriorTest {
     public void singleTypeExpectedHiddenEventsTest() {
         String newick = "(t1:1.0, t2:1.0);";
         Tree tree = new TreeParser(newick, false, false, true, 0);
-        RealParameter origin = new RealParameter("2.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "processLength", origin,
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("3.0"), 1),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("0.5"), 1),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.0"), 1),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 1),
-                "rhoSampling", new TimedParameter(origin, new RealParameter("0.2"))
+                "birthRate", new SkylineVectorParameter(null, Params.real("3.0"), 1),
+                "deathRate", new SkylineVectorParameter(null, Params.real("0.5"), 1),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.0"), 1),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0"), 1),
+                "rhoSampling", new TimedParameter(Params.asVector(origin), Params.real("0.2"))
         );
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
@@ -191,8 +193,8 @@ public class BranchSpikePriorTest {
         bsp.initByName(
                 "parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.5 0.1 0.2 0.7 0.1",
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
                 "bdmDistr", density
         );
 
@@ -204,7 +206,7 @@ public class BranchSpikePriorTest {
         double expectedFromSimulation = 3.39054;
         double tolerance = 5e-3;
 
-        assertEquals("Expected hidden events should match simulation", expectedFromSimulation, expectedHiddenEvents, tolerance);
+        assertEquals(expectedFromSimulation, expectedHiddenEvents, tolerance, "Expected hidden events should match simulation");
     }
 
     /**
@@ -218,29 +220,28 @@ public class BranchSpikePriorTest {
         TreeParser treeParser = new TreeParser(newick, false, false, false, 0);
         Tree tree = treeParser;
 
-        RealParameter originParam = new RealParameter("2.0");
+        RealScalarParam<NonNegativeReal> originParam = Params.scalar("2.0");
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(1),
                 "processLength", originParam,
                 "birthRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.75"), 1),
+                        Params.real("0.75"), 1),
                 "deathRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.3"), 1),
+                        Params.real("0.3"), 1),
                 "samplingRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.1"), 1),
+                        Params.real("0.1"), 1),
                 "removalProb", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0"), 1),
-                "rhoSampling", new TimedParameter(
-                        originParam,
-                        new RealParameter("1.0"))
+                        Params.real("0"), 1),
+                "rhoSampling", new TimedParameter(Params.asVector(originParam),
+                        Params.real("1.0"))
         );
         BranchSpikePrior bsp = new BranchSpikePrior();
-        bsp.initByName("parameterization", parameterization, "tree", tree, "spikeShape", "1.0", "spikes", "1.0 0.5 0.1 0.2 0.7 0.1");
+        bsp.initByName("parameterization", parameterization, "tree", tree, "spikeShape", Params.positive("1.0"), "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"));
         Node node = tree.getNode(5);
 
         /*
@@ -249,7 +250,7 @@ public class BranchSpikePriorTest {
         StumpedTreePrior stp = new StumpedTreePrior();
         stp.initByName("lambda", "0.75", "r0", "2.5", "samplingProportion", "0.25", "tree", tree);
         stub.initByName("tree", tree, "prior", stp);
-        gamma_bsp.initByName("spikes", "1.0 0.5 0.1 0.2 0.7 0.1", "shape", "1.0", "stubs", stub, "tree", tree);
+        gamma_bsp.initByName("spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"), "shape", "1.0", "stubs", stub, "tree", tree);
 
         stp.getMeanStubNumber(node.getHeight(), node.getParent().getHeight())  = 0.186082405828208.
         gamma_bsp.calculateLogP() = -3.4385926164063445.
@@ -268,27 +269,26 @@ public class BranchSpikePriorTest {
      */
     @Test
     public void branchTraversalTest() {
-        RealParameter originParam = new RealParameter("2.0");
+        RealScalarParam<NonNegativeReal> originParam = Params.scalar("2.0");
         Parameterization parameterization = new CanonicalParameterization();
 
         parameterization.initByName(
                 "typeSet", new TypeSet(1),
                 "processLength", originParam,
                 "birthRate", new SkylineVectorParameter(
-                        new RealParameter("0.1 0.2 0.3 0.4 0.5 0.6"),
-                        new RealParameter("1.0 1.0 1.0 1.0 1.0 1.0 1.0"), 1),
+                        Params.real("0.1 0.2 0.3 0.4 0.5 0.6"),
+                        Params.real("1.0 1.0 1.0 1.0 1.0 1.0 1.0"), 1),
                 "deathRate", new SkylineVectorParameter(
-                        new RealParameter("0.7 0.8 0.9 1.0 1.1 1.2"),
-                        new RealParameter("1.0 1.0 1.0 1.0 1.0 1.0 1.0"), 1),
+                        Params.real("0.7 0.8 0.9 1.0 1.1 1.2"),
+                        Params.real("1.0 1.0 1.0 1.0 1.0 1.0 1.0"), 1),
                 "samplingRate", new SkylineVectorParameter(
-                        new RealParameter("1.3 1.4 1.5 1.6 1.7 1.8"),
-                        new RealParameter("1.0 1.0 1.0 1.0 1.0 1.0 1.0"), 1),
+                        Params.real("1.3 1.4 1.5 1.6 1.7 1.8"),
+                        Params.real("1.0 1.0 1.0 1.0 1.0 1.0 1.0"), 1),
                 "removalProb", new SkylineVectorParameter(
-                        new RealParameter("1.9 2.0 2.1 2.2 2.5 3.0"),
-                        new RealParameter("1.0 1.0 1.0 1.0 1.0 1.0 1.0"), 1),
-                "rhoSampling", new TimedParameter(
-                        originParam,
-                        new RealParameter("0.0")));
+                        Params.real("1.9 2.0 2.1 2.2 2.5 3.0"),
+                        Params.real("1.0 1.0 1.0 1.0 1.0 1.0 1.0"), 1),
+                "rhoSampling", new TimedParameter(Params.asVector(originParam),
+                        Params.real("0.0")));
 
         // Code to generate random trees for testing
 
@@ -304,7 +304,7 @@ public class BranchSpikePriorTest {
 
         // Population model
         ConstantPopulation populationModel = new ConstantPopulation();
-        populationModel.initByName("popSize", new RealParameter("1.0"));
+        populationModel.initByName("popSize", new RealScalarParam<>(1.0, PositiveReal.INSTANCE));
 
         // Create RandomTree
         RandomTree randomTree = new RandomTree();
@@ -364,11 +364,11 @@ public class BranchSpikePriorTest {
 
         // Because we overrode getExpNrHiddenEventsForBranch, the actual rates here do not matter.
         Parameterization param = new CanonicalParameterization();
-        param.initByName("processLength", new RealParameter("2.0"),
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0"), 1),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0"), 1),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5"), 1),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0"), 1)
+        param.initByName("processLength", Params.scalar("2.0"),
+                "birthRate", new SkylineVectorParameter(null, Params.real("2.0"), 1),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0"), 1),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.5"), 1),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0"), 1)
         );
 
 
@@ -376,8 +376,8 @@ public class BranchSpikePriorTest {
         bsp.initByName(
                 "parameterization", param,
                 "tree", tree,
-                "spikeShape", "2.0",
-                "spikes", "0.8 2.5 0.5", // 0.8 for node 0, 2.5 for node 1, 0.5 for root (pseudo-prior)
+                "spikeShape", Params.positive("2.0"),
+                "spikes", Params.real("0.8 2.5 0.5"), // 0.8 for node 0, 2.5 for node 1, 0.5 for root (pseudo-prior)
                 "initializeSpikes", false
         );
 
@@ -387,8 +387,7 @@ public class BranchSpikePriorTest {
         double expectedLogP = -2.76114731;
 
         double tolerance = 1e-5;
-        assertEquals("logP does not match exact R calculation.",
-                expectedLogP, logP, tolerance);
+        assertEquals(expectedLogP, logP, tolerance, "logP does not match exact R calculation.");
     }
 
     /**
@@ -407,28 +406,28 @@ public class BranchSpikePriorTest {
         Parameterization param = new CanonicalParameterization();
         param.initByName(
                 "typeSet", new TypeSet(2),
-                "processLength", new RealParameter("2.0"),
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0 2.0"), 2),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0 1.0"), 2),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5 0.5"), 2),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0 0.0"), 2)
+                "processLength", Params.scalar("2.0"),
+                "birthRate", new SkylineVectorParameter(null, Params.real("2.0 2.0"), 2),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0 1.0"), 2),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.5 0.5"), 2),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0 0.0"), 2)
         );
 
         // Dummy BDM distribution to satisfy initAndValidate() requirements
         BirthDeathMigrationDistribution bdm = new BirthDeathMigrationDistribution();
         bdm.initByName("parameterization", param, "tree", tree, "typeLabel", "state",
-                "startTypePriorProbs", new RealParameter("0.5 0.5"));
+                "startTypePriorProbs", Params.simplex("0.5 0.5"), "storeIntegrationResults", true);
 
         // Initialise the prior
         bsp.initByName(
                 "parameterization", param,
                 "tree", tree,
                 "bdmDistr", bdm,
-                "startTypePriorProbs", new RealParameter("0.5 0.5"),
-                "spikeShape", "2.0",
+                "startTypePriorProbs", Params.simplex("0.5 0.5"),
+                "spikeShape", Params.positive("2.0"),
                 // Spikes dimension = 3 nodes * 2 types = 6 values
                 // Node0_Type0, Node0_Type1, Node1_Type0, Node1_Type1, Root_Type0, Root_Type1
-                "spikes", "0.8 0.3 2.5 1.1 0.5 0.5",
+                "spikes", Params.real("0.8 0.3 2.5 1.1 0.5 0.5"),
                 "initializeSpikes", false,
                 "useAnalyticalSingleTypeSolution", false // Force multi-type execution
         );
@@ -470,8 +469,7 @@ public class BranchSpikePriorTest {
         double expectedLogP = -6.07916977;
 
         double tolerance = 1e-5;
-        assertEquals("Multi-type logP does not match exact R calculation.",
-                expectedLogP, logP, tolerance);
+        assertEquals(expectedLogP, logP, tolerance, "Multi-type logP does not match exact R calculation.");
     }
 
     /**
@@ -494,18 +492,18 @@ public class BranchSpikePriorTest {
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
                 "typeSet", new TypeSet(2),
-                "processLength", new RealParameter("2.0"),
-                "birthRate", new SkylineVectorParameter(null, new RealParameter("2.0 2.0"), 2),
-                "deathRate", new SkylineVectorParameter(null, new RealParameter("1.0 1.0"), 2),
-                "migrationRate", new SkylineMatrixParameter(null, new RealParameter("0.5 0.5"), 2),
-                "samplingRate", new SkylineVectorParameter(null, new RealParameter("0.5 0.5"), 2),
-                "removalProb", new SkylineVectorParameter(null, new RealParameter("0.0 0.0"), 2)
+                "processLength", Params.scalar("2.0"),
+                "birthRate", new SkylineVectorParameter(null, Params.real("2.0 2.0"), 2),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0 1.0"), 2),
+                "migrationRate", new SkylineMatrixParameter(null, Params.real("0.5 0.5"), 2),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.5 0.5"), 2),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0 0.0"), 2)
         );
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
         density.initByName(
                 "parameterization", parameterization,
-                "startTypePriorProbs", new RealParameter("0.5 0.5"),
+                "startTypePriorProbs", Params.simplex("0.5 0.5"),
                 "conditionOnSurvival", false,
                 "tree", tree,
                 "typeLabel", "state",
@@ -519,9 +517,9 @@ public class BranchSpikePriorTest {
         bspZeroes.initByName(
                 "parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "0.0 0.0 0.0 0.0 0.0 0.0",
-                "startTypePriorProbs", new RealParameter("0.5 0.5"),
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("0.0 0.0 0.0 0.0 0.0 0.0"),
+                "startTypePriorProbs", Params.simplex("0.5 0.5"),
                 "bdmDistr", density,
                 "initializeSpikes", false,
                 "useAnalyticalSingleTypeSolution", false
@@ -529,18 +527,17 @@ public class BranchSpikePriorTest {
 
         double logPZeroes = bspZeroes.calculateLogP();
 
-        assertEquals("An observed speciation event must occur on exactly one type. " +
-                        "A configuration with 0.0 spikes across all types should be impossible.",
-                Double.NEGATIVE_INFINITY, logPZeroes, 1e-10);
+        assertEquals(Double.NEGATIVE_INFINITY, logPZeroes, 1e-10, "An observed speciation event must occur on exactly one type. " +
+                        "A configuration with 0.0 spikes across all types should be impossible.");
 
         // Scenario 2: Exactly one type has a spike per branch
         BranchSpikePrior bspValid = new BranchSpikePrior();
         bspValid.initByName(
                 "parameterization", parameterization,
                 "tree", tree,
-                "spikeShape", "1.0",
-                "spikes", "1.0 0.0 0.0 1.5 0.5 0.0",
-                "startTypePriorProbs", new RealParameter("0.5 0.5"),
+                "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.0 0.0 1.5 0.5 0.0"),
+                "startTypePriorProbs", Params.simplex("0.5 0.5"),
                 "bdmDistr", density,
                 "initializeSpikes", false,
                 "useAnalyticalSingleTypeSolution", false
@@ -549,28 +546,7 @@ public class BranchSpikePriorTest {
         double logPValid = bspValid.calculateLogP();
 
         // Assert that assigning the event to exactly one type yields a valid, finite logP
-        assertFalse("Assigning the observed speciation event to exactly one type should yield a valid finite logP.",
-                Double.isInfinite(logPValid) || Double.isNaN(logPValid));
-    }
-
-    @Test
-    public void testGammaReuseEquivalence() {
-        double spikeShape = 2.5;
-        double branchSpike = 1.23;
-        int nSpikes = 3;
-
-        // new object each time
-        GammaDistributionImpl original = new GammaDistributionImpl(spikeShape * nSpikes, 1.0 / spikeShape);
-        double logPOriginal = original.logDensity(branchSpike);
-
-        // reuse mutated object
-        GammaDistributionImpl reused = new GammaDistributionImpl(spikeShape, 1.0 / spikeShape);
-        reused.setAlpha(spikeShape * nSpikes);
-        reused.setBeta(1.0 / spikeShape);
-        double logPReused = reused.logDensity(branchSpike);
-
-        // Should match within numerical tolerance
-        assertEquals(logPOriginal, logPReused, 1e-16);
+        assertFalse(Double.isInfinite(logPValid) || Double.isNaN(logPValid), "Assigning the observed speciation event to exactly one type should yield a valid finite logP.");
     }
 
     private static double bruteForceLogProb(double spike, double mu, double shape, int nObs) {
@@ -629,8 +605,36 @@ public class BranchSpikePriorTest {
                 sampleMean += HiddenEventsLogger.sampleHiddenEventCount(spike, mu, shape, nObs, logTotal);
             sampleMean /= n;
 
-            assertEquals("Hidden event sampler mean (nObs = " + nObs + ")", exactMean, sampleMean, 0.01);
+            assertEquals(exactMean, sampleMean, 0.01, "Hidden event sampler mean (nObs = " + nObs + ")");
         }
     }
 
+
+    /** A tree prior left on its defaults is switched to storing its integration results. */
+    @Test
+    public void storedResultsEnabledAutomaticallyTest() {
+        Tree tree = new TreeParser("(t1[&state=1]:1.5, t2[&state=0]:0.5);", false, false, true, 0);
+        Parameterization param = new CanonicalParameterization();
+        param.initByName(
+                "typeSet", new TypeSet(2),
+                "processLength", Params.scalar("2.5"),
+                "birthRate", new SkylineVectorParameter(null, Params.real("2.0 1.5"), 2),
+                "deathRate", new SkylineVectorParameter(null, Params.real("1.0 0.5"), 2),
+                "migrationRate", new SkylineMatrixParameter(null, Params.real("0.2 0.3"), 2),
+                "samplingRate", new SkylineVectorParameter(null, Params.real("0.5 0.5"), 2),
+                "removalProb", new SkylineVectorParameter(null, Params.real("0.0"), 2));
+
+        BirthDeathMigrationDistribution bdm = new BirthDeathMigrationDistribution();
+        bdm.initByName("parameterization", param, "tree", tree, "typeLabel", "state",
+                "startTypePriorProbs", Params.simplex("0.5 0.5"));
+
+        BranchSpikePrior bsp = new BranchSpikePrior();
+        bsp.initByName("tree", tree, "spikeShape", Params.positive("1.0"),
+                "spikes", Params.real("1.0 0.5 0.1 0.2 0.7 0.1"),
+                "bdmDistr", bdm, "initializeSpikes", false, "parallelize", false);
+
+        bdm.calculateLogP();
+        assertTrue(bdm.saveIntegrationResultsInput.get());
+        assertTrue(Double.isFinite(bsp.calculateLogP()));
+    }
 }

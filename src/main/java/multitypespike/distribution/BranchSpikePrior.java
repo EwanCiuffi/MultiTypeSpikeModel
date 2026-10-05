@@ -4,14 +4,20 @@ import bdmmprime.distribution.BirthDeathMigrationDistribution;
 import bdmmprime.parameterization.*;
 import beast.base.core.BEASTInterface;
 import beast.base.core.Description;
-import beast.base.core.Function;
 import beast.base.core.Input;
+import beast.base.core.Log;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
 import beast.base.inference.Distribution;
 import beast.base.inference.State;
-import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
+import beast.base.spec.domain.NonNegativeReal;
+import beast.base.spec.domain.PositiveReal;
+import beast.base.spec.inference.parameter.RealScalarParam;
+import beast.base.spec.inference.parameter.RealVectorParam;
+import beast.base.spec.type.RealScalar;
+import beast.base.spec.type.RealVector;
+import beast.base.spec.type.Simplex;
 import beast.base.util.Randomizer;
 import org.apache.commons.math3.exception.MaxCountExceededException;
 import org.apache.commons.math3.special.Gamma;
@@ -33,17 +39,17 @@ public class BranchSpikePrior extends Distribution {
 
     final public Input<Tree> treeInput = new Input<>("tree", "tree input.", Input.Validate.REQUIRED);
 
-    final public Input<RealParameter> spikeShapeInput = new Input<>("spikeShape", "shape parameter for the " +
+    final public Input<RealVector<? extends PositiveReal>> spikeShapeInput = new Input<>("spikeShape", "shape parameter for the " +
             "gamma distribution of the spikes.", Input.Validate.REQUIRED);
 
-    final public Input<RealParameter> spikesInput = new Input<>("spikes", "spikes associated with each branch on the tree.",
+    final public Input<RealVectorParam<? extends NonNegativeReal>> spikesInput = new Input<>("spikes", "spikes associated with each branch on the tree.",
             Input.Validate.REQUIRED);
 
-    final public Input<Function> finalSampleOffsetInput = new Input<>("finalSampleOffset",
+    final public Input<RealScalar<? extends NonNegativeReal>> finalSampleOffsetInput = new Input<>("finalSampleOffset",
             "Difference in time between the final sample and the end of the BD process " +
             "(default: that of bdmDistr, or 0).");
 
-    final public Input<Function> startTypePriorProbsInput = new Input<>("startTypePriorProbs",
+    final public Input<Simplex> startTypePriorProbsInput = new Input<>("startTypePriorProbs",
             "Prior probabilities of the type at the start of the process (default: those of bdmDistr).");
 
     final public Input<BirthDeathMigrationDistribution> bdmDistrInput = new Input<>("bdmDistr",
@@ -81,7 +87,8 @@ public class BranchSpikePrior extends Distribution {
     );
 
     private Parameterization parameterization;
-    private Function startTypePriorProbs, finalSampleOffsetFunction;
+    private Simplex startTypePriorProbs;
+    private RealScalar<? extends NonNegativeReal> finalSampleOffsetScalar;
     private boolean initialised = false;
     private double[] intervalEndTimes, A, B, weightOfNodeSubTree;
     private double[] expectedHiddenEvents, piVals, storedExpectedHiddenEvents, storedPiVals;
@@ -103,8 +110,9 @@ public class BranchSpikePrior extends Distribution {
                 : bdm != null ? bdm.parameterizationInput.get() : null;
         startTypePriorProbs = startTypePriorProbsInput.get() != null ? startTypePriorProbsInput.get()
                 : bdm != null ? bdm.startTypePriorProbsInput.get() : null;
-        finalSampleOffsetFunction = finalSampleOffsetInput.get() != null ? finalSampleOffsetInput.get()
-                : bdm != null ? bdm.finalSampleOffsetInput.get() : new RealParameter("0.0");
+        finalSampleOffsetScalar = finalSampleOffsetInput.get() != null ? finalSampleOffsetInput.get()
+                : bdm != null ? bdm.finalSampleOffsetInput.get()
+                : new RealScalarParam<>(0.0, NonNegativeReal.INSTANCE);
 
         // BEAUti may create this prior before the BDMM-Prime tree prior is linked
         if (parameterization == null) return;
@@ -113,7 +121,7 @@ public class BranchSpikePrior extends Distribution {
         nTypes = parameterization.getNTypes();
         nodeCount = treeInput.get().getNodeCount();
         intervalEndTimes = parameterization.getIntervalEndTimes();
-        finalSampleOffset = finalSampleOffsetFunction.getArrayValue(0);
+        finalSampleOffset = finalSampleOffsetScalar.get();
         requiresReintegration = true;
 
         expectedHiddenEvents = new double[nodeCount * nTypes];
@@ -137,9 +145,11 @@ public class BranchSpikePrior extends Distribution {
                 throw new IllegalArgumentException("BirthDeathMigrationDistribution,'bdmDistr', must be specified for multi-type analyses.");
             }
 
-            if (!bdmDistrInput.get().saveIntegrationResultsInput.get()) {
-                bdmDistrInput.get().saveIntegrationResultsInput.setValue(true, bdmDistrInput.get());
-                bdmDistrInput.get().initAndValidate();
+            // The spike prior reads the tree prior's stored p0/ge integration results, so switch them on
+            BirthDeathMigrationDistribution bdmDistr = bdmDistrInput.get();
+            if (!bdmDistr.saveIntegrationResultsInput.get()) {
+                bdmDistr.saveIntegrationResultsInput.setValue(true, bdmDistr);
+                bdmDistr.initAndValidate();
             }
 
             isParallelizedCalculation = parallelizeInput.get();
@@ -147,7 +157,7 @@ public class BranchSpikePrior extends Distribution {
         }
 
         // Spike shape dimension check
-        int spikeShapeDim = spikeShapeInput.get().getDimension();
+        int spikeShapeDim = spikeShapeInput.get().size();
         if (nTypes == 1 && spikeShapeDim > 1) {
             throw new IllegalArgumentException("Single-type model requires exactly one spikeShape parameter.");
         }
@@ -301,12 +311,12 @@ public class BranchSpikePrior extends Distribution {
                 return multiTypeCalculateLogP();
             } catch (MaxCountExceededException ex) {
                 // Catches it if thrown directly on the main thread
-                 System.err.println("Warning: integration error encountered in prior calculation (sync)");
+                 Log.warning("Integration error encountered in prior calculation (sync)");
                 return Double.NEGATIVE_INFINITY;
             } catch (CompletionException ex) {
                 // Catches it if thrown in the CompletableFuture threads.
                 if (ex.getCause() instanceof MaxCountExceededException) {
-                     System.err.println("Warning: integration error encountered in prior calculation (async)");
+                     Log.warning("Integration error encountered in prior calculation (async)");
                     return Double.NEGATIVE_INFINITY;
                 } else if (ex.getCause() instanceof OutOfMemoryError) {
                     return handleOutOfMemory((OutOfMemoryError) ex.getCause());
@@ -329,7 +339,7 @@ public class BranchSpikePrior extends Distribution {
         Runtime rt = Runtime.getRuntime();
         long usedMB = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
         long maxMB = rt.maxMemory() / (1024 * 1024);
-        System.err.println("Warning: out of memory during multi-type hidden events integration " +
+        Log.warning("Out of memory during multi-type hidden events integration " +
                 "(nTypes=" + nTypes + ", nodeCount=" + nodeCount + ", heap ~" + usedMB + "/" + maxMB +
                 " MB used) - treating this proposal as rejected (logP = -Infinity).");
 
@@ -343,10 +353,10 @@ public class BranchSpikePrior extends Distribution {
     public double singleTypeCalculateLogP() {
         logP = 0.0;
         intervalEndTimes = parameterization.getIntervalEndTimes();
-        finalSampleOffset = finalSampleOffsetFunction.getArrayValue(0);
+        finalSampleOffset = finalSampleOffsetScalar.get();
 
         // Check spikeShape is positive
-        double spikeShape = spikeShapeInput.get().getArrayValue(0);
+        double spikeShape = spikeShapeInput.get().get(0);
         if (spikeShape <= 0) {
             return Double.NEGATIVE_INFINITY;
         }
@@ -358,7 +368,7 @@ public class BranchSpikePrior extends Distribution {
         // Loop over all nodes in the tree
         for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
             Node node = treeInput.get().getNode(nodeNr);
-            double branchSpike = spikesInput.get().getValue(nodeNr);
+            double branchSpike = spikesInput.get().get(nodeNr);
 
             // Handle origin branch and sampled ancestor branches
             if (node.isRoot() || node.isDirectAncestor()) {
@@ -392,10 +402,10 @@ public class BranchSpikePrior extends Distribution {
     public double multiTypeCalculateLogP() {
         logP = 0.0;
         intervalEndTimes = parameterization.getIntervalEndTimes();
-        finalSampleOffset = finalSampleOffsetFunction.getArrayValue(0);
+        finalSampleOffset = finalSampleOffsetScalar.get();
 
-        for (int i = 0; i < spikeShapeInput.get().getDimension(); i++) {
-            if (spikeShapeInput.get().getArrayValue(i) <= 0) {
+        for (int i = 0; i < spikeShapeInput.get().size(); i++) {
+            if (spikeShapeInput.get().get(i) <= 0) {
                 return Double.NEGATIVE_INFINITY;
             }
         }
@@ -407,7 +417,7 @@ public class BranchSpikePrior extends Distribution {
                     isParallelizedCalculation, pool, weightOfNodeSubTree, minimalProportionForParallelization
             );
             hiddenEventsIntegrator.integrateHiddenEvents(
-                    startTypePriorProbs.getDoubleValues(), parameterization, finalSampleOffset
+                    startTypeProbabilities(), parameterization, finalSampleOffset
             );
 
             for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
@@ -452,7 +462,7 @@ public class BranchSpikePrior extends Distribution {
                 // different dimensions.
 
                 for (int i = 0; i < nTypes; i++) {
-                    double branchSpike = spikesInput.get().getValue(nodeNr * nTypes + i);
+                    double branchSpike = spikesInput.get().get(nodeNr * nTypes + i);
 
                     // Log density of Exp(1) is -x
                     logP -= branchSpike;
@@ -465,7 +475,7 @@ public class BranchSpikePrior extends Distribution {
                 double expNrHiddenEvents = expectedHiddenEvents[nodeNr * nTypes + i];
                 if (expNrHiddenEvents > 1000.0) return Double.NEGATIVE_INFINITY;
 
-                branchSpikeLogProbs(spikesInput.get().getValue(nodeNr * nTypes + i),
+                branchSpikeLogProbs(spikesInput.get().get(nodeNr * nTypes + i),
                         expNrHiddenEvents, getSpikeShape(i), logProbs);
                 logP0[i] = logProbs[0];
                 logP1[i] = logProbs[1];
@@ -598,6 +608,12 @@ public class BranchSpikePrior extends Distribution {
         return maxLogTerm + Math.log(sumExp);
     }
 
+    private double[] startTypeProbabilities() {
+        double[] probs = new double[startTypePriorProbs.size()];
+        for (int i = 0; i < probs.length; i++) probs[i] = startTypePriorProbs.get(i);
+        return probs;
+    }
+
     @Override
     public List<String> getArguments() {
         List<String> args = new ArrayList<>();
@@ -610,7 +626,7 @@ public class BranchSpikePrior extends Distribution {
         List<String> conds = new ArrayList<>();
         if (treeInput.get() != null) conds.add(treeInput.get().getID());
         if (parameterization != null) conds.add(parameterization.getID());
-        if (spikeShapeInput.get() != null) conds.add(spikeShapeInput.get().getID());
+        if (spikeShapeInput.get() instanceof BEASTInterface) conds.add(((BEASTInterface) spikeShapeInput.get()).getID());
         if (startTypePriorProbs instanceof BEASTInterface) conds.add(((BEASTInterface) startTypePriorProbs).getID());
         if (bdmDistrInput.get() != null) conds.add(bdmDistrInput.get().getID());
         return conds;
@@ -644,7 +660,7 @@ public class BranchSpikePrior extends Distribution {
 
     private void sampleSingleTypeSpikes() {
 
-        double spikeShape = spikeShapeInput.get().getValue();
+        double spikeShape = spikeShapeInput.get().get(0);
         spikesInput.get().setDimension(nodeCount);
 
         if (spikeShape <= 0) {
@@ -657,7 +673,7 @@ public class BranchSpikePrior extends Distribution {
 
             // Handle origin branch and sampled ancestor branch
             if (node.isRoot() || node.isDirectAncestor()) {
-                spikesInput.get().setValue(nodeNr, 0.0);
+                spikesInput.get().set(nodeNr, 0.0);
                 continue;
             }
 
@@ -669,7 +685,7 @@ public class BranchSpikePrior extends Distribution {
             // Sample spike from Gamma distribution if nSpikes > 0
             // Uses spikeShape instead of 1/spikeShape due to different parameterisation of the Gamma distribution
             double spike = (nSpikes == 0) ? 0.0 : Randomizer.nextGamma(alpha, spikeShape);
-            spikesInput.get().setValue(nodeNr, spike);
+            spikesInput.get().set(nodeNr, spike);
 
         }
     }
@@ -690,7 +706,7 @@ public class BranchSpikePrior extends Distribution {
                 weightOfNodeSubTree, minimalProportionForParallelization
         );
         hiddenEventsIntegrator.integrateHiddenEvents(
-                startTypePriorProbs.getDoubleValues(), parameterization, finalSampleOffset
+                startTypeProbabilities(), parameterization, finalSampleOffset
         );
 
         for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
@@ -700,7 +716,7 @@ public class BranchSpikePrior extends Distribution {
             if (node.isRoot() || node.isDirectAncestor()) {
                 // Zero spikes for root and direct ancestors
                 for (int i = 0; i < nTypes; i++) {
-                    spikesInput.get().setValue(nodeNr * nTypes + i, 0.0);
+                    spikesInput.get().set(nodeNr * nTypes + i, 0.0);
                 }
                 continue;
             }
@@ -741,7 +757,7 @@ public class BranchSpikePrior extends Distribution {
                 double alpha = spikeShape * nSpikes;
 
                 double spike = (nSpikes == 0) ? 0.0 : Randomizer.nextGamma(alpha, spikeShape);
-                spikesInput.get().setValue(nodeNr * nTypes + i, spike);
+                spikesInput.get().set(nodeNr * nTypes + i, spike);
 
             }
         }
@@ -781,9 +797,9 @@ public class BranchSpikePrior extends Distribution {
     }
 
     public double getSpikeShape(int type) {
-        int spikeShapeDim = spikeShapeInput.get().getDimension();
-        if (nTypes == 1 || spikeShapeDim == 1) return spikeShapeInput.get().getArrayValue(0);
-        else return spikeShapeInput.get().getArrayValue(type);
+        int spikeShapeDim = spikeShapeInput.get().size();
+        if (nTypes == 1 || spikeShapeDim == 1) return spikeShapeInput.get().get(0);
+        else return spikeShapeInput.get().get(type);
     }
 
     @Override

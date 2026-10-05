@@ -1,17 +1,21 @@
 package multitypespike.logger;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import beast.base.core.Description;
-import beast.base.core.Function;
 import beast.base.core.Input;
 import beast.base.core.Loggable;
 import beast.base.core.Input.Validate;
 import beast.base.inference.CalculationNode;
+import beast.base.spec.domain.Real;
+import beast.base.spec.type.RealVector;
 import multitypespike.distribution.BranchSpikePrior;
 
 import java.io.PrintStream;
 
 @Description("Logs node type probabilities, either all types or just the maximum.")
-public class NodeTypeProbabilityLogger extends CalculationNode implements Function, Loggable {
+public class NodeTypeProbabilityLogger extends CalculationNode implements RealVector<Real>, Loggable {
 
     final public Input<BranchSpikePrior> branchSpikePriorInput =
             new Input<>("branchSpikePrior", "Branch spike prior", Validate.REQUIRED);
@@ -34,7 +38,7 @@ public class NodeTypeProbabilityLogger extends CalculationNode implements Functi
     }
 
     @Override
-    public int getDimension() {
+    public int size() {
         if (logMax) {
             return 2 * nodeCount; // Only maxType and maxProb per node
         } else {
@@ -43,7 +47,7 @@ public class NodeTypeProbabilityLogger extends CalculationNode implements Functi
     }
 
     @Override
-    public double getArrayValue(int dim) {
+    public double get(int dim) {
         if (logMax) {
             int nodeNr = dim / 2;
             int index = dim % 2;
@@ -69,6 +73,18 @@ public class NodeTypeProbabilityLogger extends CalculationNode implements Functi
 
 
     @Override
+    public Real getDomain() {
+        return Real.INSTANCE;
+    }
+
+    @Override
+    public List<Double> getElements() {
+        List<Double> elements = new ArrayList<>(size());
+        for (int i = 0; i < size(); i++) elements.add(get(i));
+        return elements;
+    }
+
+    @Override
     public void init(PrintStream out) {
         String id = this.getID();
         if (id == null || id.isEmpty()) id = "branchTypeProb";
@@ -87,8 +103,8 @@ public class NodeTypeProbabilityLogger extends CalculationNode implements Functi
 
     @Override
     public void log(long sample, PrintStream out) {
-        for (int i = 0; i < this.getDimension(); i++) {
-            out.print(this.getArrayValue(i) + "\t");
+        for (int i = 0; i < size(); i++) {
+            out.print(get(i) + "\t");
         }
     }
 

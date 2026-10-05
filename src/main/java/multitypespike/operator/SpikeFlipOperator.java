@@ -8,17 +8,20 @@ import beast.base.core.Description;
 import beast.base.core.Input;
 import beast.base.inference.Operator;
 import beast.base.inference.StateNode;
-import beast.base.inference.parameter.RealParameter;
+import beast.base.spec.domain.NonNegativeReal;
+import beast.base.spec.domain.PositiveReal;
+import beast.base.spec.inference.parameter.RealVectorParam;
+import beast.base.spec.type.RealVector;
 import beast.base.util.Randomizer;
 import multitypespike.distribution.BranchSpikePrior;
 
 @Description("Flips a spike from zero to non zero, or vice versa")
 public class SpikeFlipOperator extends Operator {
 
-    final public Input<RealParameter> spikesInput = new Input<>("spikes",
+    final public Input<RealVectorParam<? extends NonNegativeReal>> spikesInput = new Input<>("spikes",
             "spikes associated with each branch", Input.Validate.REQUIRED);
 
-    final public Input<RealParameter> spikeShapeInput = new Input<>("spikeShape", "shape parameter for the " +
+    final public Input<RealVector<? extends PositiveReal>> spikeShapeInput = new Input<>("spikeShape", "shape parameter for the " +
             "gamma distribution of the spikes.", Input.Validate.REQUIRED);
 
     final public Input<Parameterization> parameterizationInput = new Input<>("parameterization",
@@ -45,9 +48,9 @@ public class SpikeFlipOperator extends Operator {
     private void resolveTypes() {
         nTypes = parameterizationInput.get() != null ? parameterizationInput.get().getNTypes()
                 : branchSpikePriorInput.get().nTypes;
-        nodeCount = spikesInput.get().getDimension() / nTypes;
+        nodeCount = spikesInput.get().size() / nTypes;
 
-        int spikeShapeDim = spikeShapeInput.get().getDimension();
+        int spikeShapeDim = spikeShapeInput.get().size();
         if (nTypes == 1 && spikeShapeDim > 1) {
             throw new IllegalArgumentException("Single-type model requires exactly one spikeShape parameter.");
         }
@@ -61,15 +64,15 @@ public class SpikeFlipOperator extends Operator {
     public double proposal() {
         if (nTypes == 0) resolveTypes();
 
-        final RealParameter spikes = spikesInput.get();
+        final RealVectorParam<? extends NonNegativeReal> spikes = spikesInput.get();
 
         // ---- SINGLE-TYPE: flip one spike chosen uniformly ----
         if (!flipAcrossTypes) {
 
-            final int index = Randomizer.nextInt(spikes.getDimension());
+            final int index = Randomizer.nextInt(spikes.size());
             final int type = index % nTypes;
             final double spikeShape = getSpikeShape(type);
-            final double sOld = spikes.getValue(index);
+            final double sOld = spikes.get(index);
 
             if (sOld == 0.0) {
                 // Birth move: 0 -> Gamma(spikeShape, 1/spikeShape)
@@ -83,7 +86,7 @@ public class SpikeFlipOperator extends Operator {
                 // Ensure we don't propose exactly 0 due to precision
                 if (sNew < 1e-9) sNew = 1e-9;
 
-                spikes.setValue(index, sNew);
+                spikes.set(index, sNew);
 
                 // logHR = log(pRev) - log(pFwd) = 0 - logDensity(sNew)
                 return -BranchSpikePrior.logSpikeDensity(sNew, 1, spikeShape);
@@ -91,7 +94,7 @@ public class SpikeFlipOperator extends Operator {
             } else {
                 // Death: sOld -> 0
 
-                spikes.setValue(index, 0.0);
+                spikes.set(index, 0.0);
 
                 // logHR = log(pRev) - log(pFwd) = logDensity(sOld) - 0
                 return BranchSpikePrior.logSpikeDensity(sOld, 1, spikeShape);
@@ -130,15 +133,15 @@ public class SpikeFlipOperator extends Operator {
                 double sNew = Randomizer.nextGamma(spikeShape, spikeShape);
 
                 if (sNew < 1e-9) sNew = 1e-9;
-                spikes.setValue(start + i, sNew);
+                spikes.set(start + i, sNew);
                 logHR -= BranchSpikePrior.logSpikeDensity(sNew, 1, spikeShape);
             }
         } else {
             // Death: set all spikes to zero
             for (int i = 0; i < nTypes; i++) {
                 double spikeShape = getSpikeShape(i);
-                double sOld = spikes.getValue(start + i);
-                spikes.setValue(start + i, 0.0);
+                double sOld = spikes.get(start + i);
+                spikes.set(start + i, 0.0);
                 logHR += BranchSpikePrior.logSpikeDensity(sOld, 1, spikeShape);
             }
         }
@@ -153,10 +156,10 @@ public class SpikeFlipOperator extends Operator {
      * @param nodeStart index of the first spike for this node (= nodeIndex * nTypes)
      * @return number of zero-valued spikes in [nodeStart, nodeStart + nTypes)
      */
-    private int countZeroSpikes(RealParameter spikes, int nodeStart) {
+    private int countZeroSpikes(RealVectorParam<? extends NonNegativeReal> spikes, int nodeStart) {
         int nZero = 0;
         for (int i = 0; i < nTypes; i++) {
-            if (spikes.getValue(nodeStart + i) == 0.0) nZero++;
+            if (spikes.get(nodeStart + i) == 0.0) nZero++;
         }
         return nZero;
     }
@@ -169,8 +172,8 @@ public class SpikeFlipOperator extends Operator {
     }
 
     public double getSpikeShape(int type) {
-        int spikeShapeDim = spikeShapeInput.get().getDimension();
-        if (nTypes == 1 || spikeShapeDim == 1) return spikeShapeInput.get().getArrayValue(0);
-        else return spikeShapeInput.get().getArrayValue(type);
+        int spikeShapeDim = spikeShapeInput.get().size();
+        if (nTypes == 1 || spikeShapeDim == 1) return spikeShapeInput.get().get(0);
+        else return spikeShapeInput.get().get(type);
     }
 }

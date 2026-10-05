@@ -3,15 +3,16 @@ package multitypespike.operator;
 import bdmmprime.parameterization.Parameterization;
 import beast.base.core.Description;
 import beast.base.core.Input;
-import beast.base.evolution.operator.kernel.BactrianScaleOperator;
-import beast.base.inference.parameter.RealParameter;
+import beast.base.spec.domain.NonNegativeReal;
+import beast.base.spec.inference.operator.ScaleOperator;
+import beast.base.spec.inference.parameter.RealVectorParam;
 import beast.base.util.Randomizer;
 
 @Description("Scales up non-zero spikes on a branch and the corresponding branch rate down or vice versa." +
         "For multi-type analyses spikes are scaled uniformly across all types")
-public class SpikeUpDownOperator extends BactrianScaleOperator {
+public class SpikeUpDownOperator extends ScaleOperator {
 
-    final public Input<RealParameter> spikesInput = new Input<>("spikes",
+    final public Input<RealVectorParam<? extends NonNegativeReal>> spikesInput = new Input<>("spikes",
             "spikes associated with each branch", Input.Validate.REQUIRED);
     final public Input<Parameterization> parameterizationInput = new Input<>("parameterization",
             "BDMM-Prime parameterization, giving the number of types (default: spikes dimension / rates dimension).");
@@ -23,21 +24,28 @@ public class SpikeUpDownOperator extends BactrianScaleOperator {
 
     @Override
     public void initAndValidate() {
+        if (!(parameterInput.get() instanceof RealVectorParam<?>)) {
+            throw new IllegalArgumentException("SpikeUpDownOperator: the parameter (branch rates) must be a RealVectorParam.");
+        }
         super.initAndValidate();
         reverse = reverseInput.get();
+    }
+
+    private RealVectorParam<?> rates() {
+        return (RealVectorParam<?>) parameterInput.get();
     }
 
     // Resolved on first use, once the clock model and spike prior have set the dimensions.
     // Spikes are laid out as rateIndex * nTypes + typeIndex.
     private void resolveTypes() {
-        final RealParameter rates = parameterInput.get();
+        final RealVectorParam<?> rates = rates();
         nTypes = parameterizationInput.get() != null ? parameterizationInput.get().getNTypes()
-                : spikesInput.get().getDimension() / rates.getDimension();
-        final RealParameter spikes = spikesInput.get();
-        if (spikes.getDimension() != rates.getDimension() * nTypes) {
+                : spikesInput.get().size() / rates.size();
+        final RealVectorParam<? extends NonNegativeReal> spikes = spikesInput.get();
+        if (spikes.size() != rates.size() * nTypes) {
             throw new IllegalArgumentException(
-                    "SpikeUpDownOperator: spikes.dimension (" + spikes.getDimension() +
-                            ") must equal rates.dimension (" + rates.getDimension() +
+                    "SpikeUpDownOperator: spikes.dimension (" + spikes.size() +
+                            ") must equal rates.dimension (" + rates.size() +
                             ") * nTypes (" + nTypes + ").");
         }
     }
@@ -46,12 +54,12 @@ public class SpikeUpDownOperator extends BactrianScaleOperator {
     public double proposal() {
         if (nTypes == 0) resolveTypes();
 
-        final RealParameter rates = parameterInput.get();
-        final RealParameter spikes = spikesInput.get();
+        final RealVectorParam<?> rates = rates();
+        final RealVectorParam<? extends NonNegativeReal> spikes = spikesInput.get();
 
         // Sample a rate index uniformly.
-        final int index = Randomizer.nextInt(rates.getDimension());
-        final double r = rates.getValue(index);
+        final int index = Randomizer.nextInt(rates.size());
+        final double r = rates.get(index);
 
         final double scale = getScaler(index, r);
 
@@ -66,7 +74,7 @@ public class SpikeUpDownOperator extends BactrianScaleOperator {
         if (rNew < rates.getLower() || rNew > rates.getUpper()) {
             return Double.NEGATIVE_INFINITY;
         }
-        rates.setValue(index, rNew);
+        rates.set(index, rNew);
 
         // ---- Propose new spikes ----
         // Spikes are laid out as: spikeIndex = rateIndex * nTypes + typeIndex.
@@ -89,7 +97,7 @@ public class SpikeUpDownOperator extends BactrianScaleOperator {
 
         for (int i = 0; i < nTypes; i++) {
             final int spikeIndex = index * nTypes + i;
-            final double s = spikes.getValue(spikeIndex);
+            final double s = spikes.get(spikeIndex);
 
             if (s == 0.0) {
                 // Spike is off; leave it at zero and skip.
@@ -108,7 +116,7 @@ public class SpikeUpDownOperator extends BactrianScaleOperator {
             if (sNew < spikes.getLower() || sNew > spikes.getUpper()) {
                 return Double.NEGATIVE_INFINITY;
             }
-            spikes.setValue(spikeIndex, sNew);
+            spikes.set(spikeIndex, sNew);
         }
 
         // ---- Log Hastings ratio = log Jacobian ----

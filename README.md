@@ -50,38 +50,21 @@ lineages with different traits or in different geographic regions.
 
 ---
 
-## Installation
+## Installation from source
 
-The package requires **BEAST 2.7.5** or later and installs **BDMM-Prime** and **SA** as dependencies.
+This branch targets **BEAST 2.8** (version 1.1.0). It requires BEAST 2.8.0 or later and **BDMM-Prime** 3.0.0 or later.
 
-### Through the BEAST Package Manager
-
-1. In BEAUti, open **File > Manage Packages**, click **Package repositories** and **Add URL**, and enter
-   ```
-   https://raw.githubusercontent.com/EwanCiuffi/MultiTypeSpikeModel/main/packages.xml
-   ```
-2. Select **MultiTypeSpikeModel** in the package list and click **Install/Upgrade**.
-3. Restart BEAUti.
-
-### From source
-
-You need OpenJDK 17 or later, the JavaFX SDK and Apache Ant. The build expects `beast2`, `BeastFX` and
-`BDMM-Prime` as sibling directories of this repository, with BDMM-Prime built first:
+The build needs JDK 25 or later and Maven 3.9 or later.
 
 ```bash
-git clone https://github.com/CompEvol/beast2.git
-git clone https://github.com/CompEvol/BeastFX.git
-git clone https://github.com/tgvaughan/BDMM-Prime.git
 git clone https://github.com/EwanCiuffi/MultiTypeSpikeModel.git
-
-(cd BDMM-Prime && ant)
-cd MultiTypeSpikeModel
-JAVA_FX_HOME=/path/to/javafx-sdk/lib ant install
+cd MultiTypeSpikeModel && git checkout beast2.8
+mvn package
 ```
 
-`ant install` builds and tests the package, installs it into the BEAST 2.7 package directory and
-resets BEAUti's cached package list; restart BEAUti afterwards. `ant package` builds the release zip
-in `build/dist/` without installing it.
+`mvn package` runs the tests and builds `target/MultiTypeSpikeModel.package.v1.1.0.zip`. `mvn install`
+installs the package into the local Maven repository, from where
+`packagemanager -addMavenRepository file://$HOME/.m2/repository` followed by the command above installs it.
 
 ---
 
@@ -89,13 +72,14 @@ in `build/dist/` without installing it.
 
 1. On the **Priors** tab, choose **BDMM-Prime** as the tree prior and set up its types and
    parameterization.
-2. On the **Clock Model** tab, choose **MultiTypeSpikeClock (needs BDMM-Prime)**. The spike prior always uses the BDMM-Prime settings of the same partition.
+2. On the **Clock Model** tab, choose **MultiTypeSpikeClock (needs BDMM-Prime)**. The spike prior always uses the BDMM-Prime settings of the same partition, and switches on that tree prior's stored integration results (`storeIntegrationResults="true"`).
 3. Adjust the priors on the spike mean, spike shape and clock parameters on the **Priors** tab.
 
 Notes:
 
 - The spike mean and spike shape are shared across types by default. To make them type-specific, set
   their dimension to the number of types in the XML.
+- In hand-written XML, list the BDMM-Prime tree prior before the `BranchSpikePrior` in the prior, since the spike prior reads the integration results stored by the most recent tree prior calculation. BEAUti generates this order.
 - Estimate the indicator to compare the spike model with a relaxed clock without spikes.
 - `nonCentered` switches the relaxed clock to a non-centred parameterisation, which can mix better when
   the branch rates are weakly informed by the data.

@@ -1,18 +1,22 @@
 package multitypespike.logger;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import java.io.PrintStream;
 
 import beast.base.core.Description;
-import beast.base.core.Function;
 import beast.base.core.Input;
 import beast.base.core.Loggable;
 import beast.base.core.Input.Validate;
 import beast.base.inference.CalculationNode;
+import beast.base.spec.domain.Real;
+import beast.base.spec.type.RealVector;
 import multitypespike.clockmodel.PunctuatedClockModel;
 
 
 @Description("Logs spike values per branch scaled by the spike mean parameter")
-public class SpikeLogger extends CalculationNode implements Function, Loggable {
+public class SpikeLogger extends CalculationNode implements RealVector<Real>, Loggable {
     final public Input<PunctuatedClockModel> clockModelInput =
             new Input<>("clock", "Punctuated clock model input", Validate.REQUIRED);
     final public Input<Boolean> logPerTypeInput = new Input<>(
@@ -30,13 +34,13 @@ public class SpikeLogger extends CalculationNode implements Function, Loggable {
     }
 
     @Override
-    public int getDimension() {
+    public int size() {
         if(logPerType) return nTypes * nodeCount;
         else return nodeCount;
     }
 
     @Override
-    public double getArrayValue(int dim) {
+    public double get(int dim) {
         if(nTypes == 1) {
             return clockModelInput.get().getSpikeSize(dim);
         } else if(!logPerType) {
@@ -48,6 +52,18 @@ public class SpikeLogger extends CalculationNode implements Function, Loggable {
         }
     }
 
+
+    @Override
+    public Real getDomain() {
+        return Real.INSTANCE;
+    }
+
+    @Override
+    public List<Double> getElements() {
+        List<Double> elements = new ArrayList<>(size());
+        for (int i = 0; i < size(); i++) elements.add(get(i));
+        return elements;
+    }
 
     @Override
     public void init(PrintStream out) {
@@ -69,8 +85,8 @@ public class SpikeLogger extends CalculationNode implements Function, Loggable {
 
     @Override
     public void log(long sampleNr, PrintStream out) {
-        for (int i = 0; i < this.getDimension(); i ++) {
-            out.print(this.getArrayValue(i) + "\t");
+        for (int i = 0; i < size(); i ++) {
+            out.print(get(i) + "\t");
         }
     }
 

@@ -5,7 +5,10 @@ import bdmmprime.parameterization.*;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
 import beast.base.evolution.tree.TreeParser;
-import beast.base.inference.parameter.RealParameter;
+import beast.base.spec.domain.NonNegativeReal;
+import beast.base.spec.inference.parameter.RealScalarParam;
+import beast.base.spec.inference.parameter.SimplexParam;
+import test.multitypespike.Params;
 import org.apache.commons.math3.ode.ContinuousOutputModel;
 
 import java.io.File;
@@ -19,8 +22,8 @@ public class P0GeValidation {
 
         String newick = "(t1[&state=0] : 1.5, t2[&state=1] : 0.5);";
         Tree tree = new TreeParser(newick, false,false,true,0);
-        RealParameter origin = new RealParameter("2.5");
-        RealParameter startTypePriorProbs = new RealParameter("0.5 0.5");
+        RealScalarParam<NonNegativeReal> origin = Params.scalar("2.5");
+        SimplexParam startTypePriorProbs = Params.simplex("0.5 0.5");
 
         Parameterization parameterization = new CanonicalParameterization();
         parameterization.initByName(
@@ -28,22 +31,22 @@ public class P0GeValidation {
                 "processLength", origin,
                 "birthRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("2.0"), 2),
+                        Params.real("2.0"), 2),
                 "deathRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("1.0"), 2),
+                        Params.real("1.0"), 2),
                 "birthRateAmongDemes", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.0"), 2),
+                        Params.real("0.0"), 2),
                 "migrationRate", new SkylineMatrixParameter(
                         null,
-                        new RealParameter("0.1 0.2"), 2),
+                        Params.real("0.1 0.2"), 2),
                 "samplingRate", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.5"), 2),
+                        Params.real("0.5"), 2),
                 "removalProb", new SkylineVectorParameter(
                         null,
-                        new RealParameter("0.0"), 2));
+                        Params.real("0.0"), 2));
 
         BirthDeathMigrationDistribution density = new BirthDeathMigrationDistribution();
 

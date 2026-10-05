@@ -1,37 +1,41 @@
 package multitypespike.clockmodel;
 
 import beast.base.core.Description;
-import beast.base.core.Function;
 import beast.base.core.Input;
-import beast.base.evolution.branchratemodel.BranchRateModel;
 import beast.base.evolution.tree.Node;
 import beast.base.evolution.tree.Tree;
-import beast.base.inference.parameter.BooleanParameter;
-import beast.base.inference.parameter.RealParameter;
 import beast.base.inference.util.InputUtil;
+import beast.base.spec.domain.NonNegativeReal;
+import beast.base.spec.domain.PositiveReal;
+import beast.base.spec.domain.Real;
+import beast.base.spec.evolution.branchratemodel.Base;
+import beast.base.spec.inference.parameter.RealVectorParam;
+import beast.base.spec.type.BoolVector;
+import beast.base.spec.type.RealScalar;
+import beast.base.spec.type.RealVector;
 
 
 @Description("Clock model that combines continuous branch rate variation with punctuated spikes of evolution at speciation events")
-public class PunctuatedClockModel extends BranchRateModel.Base {
+public class PunctuatedClockModel extends Base {
     final public Input<Tree> treeInput = new Input<>("tree", "tree input", Input.Validate.REQUIRED);
 
-    final public Input<Function> spikeMeanInput = new Input<>("spikeMean", "mean parameter for each spike", Input.Validate.REQUIRED);
+    final public Input<RealVector<? extends NonNegativeReal>> spikeMeanInput = new Input<>("spikeMean", "mean parameter for each spike", Input.Validate.REQUIRED);
 
-    final public Input<RealParameter> spikesInput = new Input<>("spikes", "spikes associated with each branch on the tree", Input.Validate.REQUIRED);
+    final public Input<RealVector<? extends NonNegativeReal>> spikesInput = new Input<>("spikes", "spikes associated with each branch on the tree", Input.Validate.REQUIRED);
 
-    final public Input<RealParameter> ratesInput = new Input<>("rates", "Per-branch rate parameters. If nonCentered=false (default), these are the direct lognormal multipliers. " +
+    final public Input<RealVectorParam<? extends Real>> ratesInput = new Input<>("rates", "Per-branch rate parameters. If nonCentered=false (default), these are the direct lognormal multipliers. " +
             "If true, these are standard N(0,1) values transformed internally.", Input.Validate.OPTIONAL);
 
-    final public Input<BooleanParameter> relaxedInput = new Input<>("relaxed", "if false then use strict clock", Input.Validate.OPTIONAL);
+    final public Input<Boolean> relaxedInput = new Input<>("relaxed", "if false then use strict clock (default true)", Input.Validate.OPTIONAL);
 
-    final public Input<BooleanParameter> indicatorInput = new Input<>("indicator", "if false then no spikes are inferred", Input.Validate.OPTIONAL);
+    final public Input<BoolVector> indicatorInput = new Input<>("indicator", "if false then no spikes are inferred", Input.Validate.OPTIONAL);
 
     final public Input<Boolean> noSpikeOnDatedTipsInput = new Input<>("noSpikeOnDatedTips", "Set to true if dated tips should have a spike of 0", false);
 
     final public Input<Boolean> nonCenteredInput = new Input<>("nonCentered", "If true, uses non-centered parameterisation where relaxed rates are treated as N(0,1) " +
             "and transformed internally to maintain a real-space mean of 1. If false (default), relaxed rates are direct multipliers.", false);
 
-    final public Input<RealParameter> rateSDInput = new Input<>("rateSD", "standard deviation of the relaxed-clock lognormal rate distribution. " +
+    final public Input<RealScalar<? extends PositiveReal>> rateSDInput = new Input<>("rateSD", "standard deviation of the relaxed-clock lognormal rate distribution. " +
             "Only required when 'nonCentered' is true.", Input.Validate.OPTIONAL);
 
     public int nTypes, nodeCount;
@@ -45,13 +49,13 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     @Override
     public void initAndValidate() {
 
-        if (relaxedInput.get() != null && relaxedInput.get().getValue()) {
+        if (relaxedInput.get() != null && relaxedInput.get()) {
             if (ratesInput.get() == null) {
                 throw new IllegalArgumentException("If 'relaxed' is true, then the rates input must be provided.");
             }
         }
 
-        if (relaxedInput.get() != null && !relaxedInput.get().getValue()) {
+        if (relaxedInput.get() != null && !relaxedInput.get()) {
             if (meanRateInput.get() == null) {
                 throw new IllegalArgumentException("If 'relaxed' is false, then the clock.rate input must be provided.");
             }
@@ -66,10 +70,10 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         }
 
         nodeCount = treeInput.get().getNodeCount();
-        nTypes = spikesInput.get().getDimension() / nodeCount;
+        nTypes = spikesInput.get().size() / nodeCount;
 
         // Spike mean dimension checks
-        spikeMeanDim = spikeMeanInput.get().getDimension();
+        spikeMeanDim = spikeMeanInput.get().size();
         if (nTypes == 1 && spikeMeanDim > 1) {
             throw new IllegalArgumentException("Single-type model requires exactly one spikeMean parameter.");
         }
@@ -79,7 +83,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
         // Indicator dimension checks
         if (indicatorInput.get() != null) {
-            indicatorDim = indicatorInput.get().getDimension();
+            indicatorDim = indicatorInput.get().size();
             if (nTypes == 1 && indicatorDim > 1) {
                 throw new IllegalArgumentException("Single-type model requires at most one indicator parameter.");
             }
@@ -100,7 +104,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
                 double spikeSum = 0;
                 for (int i = 0; i < nTypes; i++) {
                     if (getIndicator(i))
-                        spikeSum += spikesInput.get().getValue(nodeNr * nTypes + i) * getSpikeMean(i);
+                        spikeSum += spikesInput.get().get(nodeNr * nTypes + i) * getSpikeMean(i);
                 }
                 spikeSums[nodeNr] = spikeSum;
                 relaxedRates[nodeNr] = getRawRelaxedRate(nodeNr);
@@ -138,7 +142,7 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
         if (node.isRoot() || node.isDirectAncestor()) return 0;
 
         double spikeMean = getSpikeMean(type);
-        double branchSpike = spikesInput.get().getValue(node.getNr() * nTypes + type);
+        double branchSpike = spikesInput.get().get(node.getNr() * nTypes + type);
 
         return branchSpike * spikeMean;
     }
@@ -162,19 +166,19 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
 
 
     private double getSpikeMean(int type) {
-        if (nTypes == 1 || spikeMeanDim == 1) return spikeMeanInput.get().getArrayValue(0);
-        else return spikeMeanInput.get().getArrayValue(type);
+        if (nTypes == 1 || spikeMeanDim == 1) return spikeMeanInput.get().get(0);
+        else return spikeMeanInput.get().get(type);
     }
 
     private boolean getIndicator(int type) {
         if (indicatorInput.get() == null) return true; // Default to 1 if no indicator input is provided
-        if (indicatorDim == 1) return indicatorInput.get().getValue(0);
-        return indicatorInput.get().getValue(type);
+        if (indicatorDim == 1) return indicatorInput.get().get(0);
+        return indicatorInput.get().get(type);
     }
 
     @Override
     public double getRateForBranch(Node node) {
-        double baseRate = meanRateInput.get().getArrayValue();
+        double baseRate = meanRateInput.get().get();
         if (node.getLength() <= 0 || node.isRoot() || node.isDirectAncestor()) return baseRate;
 
         double spikeSize = getSpikeSize(node);
@@ -194,9 +198,9 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
      * contribution to branch distance (i.e. baseRate * relaxed_rate_multiplier).
      */
     private double getRawRelaxedRate(int nodeNr) {
-        double baseRate = meanRateInput.get().getArrayValue();
+        double baseRate = meanRateInput.get().get();
         if (ratesInput.get() == null) return baseRate;
-        if (relaxedInput.get() == null || relaxedInput.get().getValue()) {
+        if (relaxedInput.get() == null || relaxedInput.get()) {
             return getRateMultiplier(nodeNr) * baseRate;
         }
         return baseRate;
@@ -210,11 +214,11 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
      * the parameters.
      */
     private double getRateMultiplier(int nodeNr) {
-        double z = ratesInput.get().getValue(nodeNr);
+        double z = ratesInput.get().get(nodeNr);
         if (!nonCenteredInput.get()) {
             return z;
         }
-        double sigma = rateSDInput.get().getArrayValue();
+        double sigma = rateSDInput.get().get();
         return Math.exp(sigma * z - 0.5 * sigma * sigma);
     }
 
@@ -224,7 +228,6 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     protected boolean requiresRecalculation() {
         boolean dirty = InputUtil.isDirty(spikesInput) || InputUtil.isDirty(spikeMeanInput) ||
                 InputUtil.isDirty(ratesInput) || InputUtil.isDirty(meanRateInput) ||
-                (relaxedInput.get() != null && InputUtil.isDirty(relaxedInput)) ||
                 (indicatorInput.get() != null && InputUtil.isDirty(indicatorInput)) ||
                 (nonCenteredInput.get() && rateSDInput.get() != null && InputUtil.isDirty(rateSDInput));
         if (dirty) cacheValid = false;
