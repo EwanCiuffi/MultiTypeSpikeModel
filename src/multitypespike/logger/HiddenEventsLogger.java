@@ -50,7 +50,7 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
 
     @Override
     public void log(long sample, PrintStream out) {
-        if (!logExpectedValue) sampleHiddenEvents();
+        if (!logExpectedValue && !bsp.hasSimulatedHiddenEvents()) sampleHiddenEvents();
         for (int i = 0; i < this.getDimension(); i ++) {
             out.print(this.getArrayValue(i) + "\t");
         }
@@ -75,6 +75,14 @@ public class HiddenEventsLogger extends CalculationNode implements Function, Log
                 }
                 return sum;
             }
+        }
+
+        // Get hidden events directly from sample method for simulation
+        if (bsp.hasSimulatedHiddenEvents()) {
+            if (nTypes == 1 || logPerType) return bsp.getSimulatedHiddenEvents(dim / nTypes, dim % nTypes);
+            double sum = 0.0;
+            for (int type = 0; type < nTypes; type++) sum += bsp.getSimulatedHiddenEvents(dim, type);
+            return sum;
         }
 
         if (sampledEvents == null || dimRead[dim]) sampleHiddenEvents();

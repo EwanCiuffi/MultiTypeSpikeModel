@@ -86,6 +86,8 @@ public class BranchSpikePrior extends Distribution {
     private double[] intervalEndTimes, A, B, weightOfNodeSubTree;
     private double[] expectedHiddenEvents, piVals, storedExpectedHiddenEvents, storedPiVals;
     private double[] nodePiVals, storedNodePiVals;
+    private double[] simulatedHiddenEvents;
+    private boolean hiddenEventsSimulated = false;
     private double lambda_i, mu_i, psi_i, t_i, A_i, B_i, finalSampleOffset;
     private boolean spikesInitialised = false;
     private boolean isParallelizedCalculation;
@@ -122,6 +124,7 @@ public class BranchSpikePrior extends Distribution {
         storedPiVals = new double[nodeCount * nTypes];
         nodePiVals = new double[nodeCount * nTypes];
         storedNodePiVals = new double[nodeCount * nTypes];
+        simulatedHiddenEvents = new double[nodeCount * nTypes];
 
         weightOfNodeSubTree = new double[treeInput.get().getLeafNodeCount() * 2];
 
@@ -640,6 +643,7 @@ public class BranchSpikePrior extends Distribution {
             sampleMultiTypeSpikes();
 
         }
+        hiddenEventsSimulated = true;
     }
 
     private void sampleSingleTypeSpikes() {
@@ -658,11 +662,15 @@ public class BranchSpikePrior extends Distribution {
             // Handle origin branch and sampled ancestor branch
             if (node.isRoot() || node.isDirectAncestor()) {
                 spikesInput.get().setValue(nodeNr, 0.0);
+                expectedHiddenEvents[nodeNr] = 0.0;
+                simulatedHiddenEvents[nodeNr] = 0.0;
                 continue;
             }
 
             double expNrHiddenEvents = getExpNrHiddenEventsForBranch(node);
             int nHiddenEvents = (int) Randomizer.nextPoisson(expNrHiddenEvents);
+            expectedHiddenEvents[nodeNr] = expNrHiddenEvents;
+            simulatedHiddenEvents[nodeNr] = nHiddenEvents;
             int nSpikes = node.getParent().isFake() ? nHiddenEvents : nHiddenEvents + 1;
             double alpha = spikeShape * nSpikes;
 
@@ -701,6 +709,8 @@ public class BranchSpikePrior extends Distribution {
                 // Zero spikes for root and direct ancestors
                 for (int i = 0; i < nTypes; i++) {
                     spikesInput.get().setValue(nodeNr * nTypes + i, 0.0);
+                    expectedHiddenEvents[nodeNr * nTypes + i] = 0.0;
+                    simulatedHiddenEvents[nodeNr * nTypes + i] = 0.0;
                 }
                 continue;
             }
@@ -736,6 +746,8 @@ public class BranchSpikePrior extends Distribution {
                 int obsEvent = (i == obsEventType) ? 1 : 0;
 
                 int nHiddenEvents = (int) Randomizer.nextPoisson(expNrHiddenEvents);
+                expectedHiddenEvents[nodeNr * nTypes + i] = expNrHiddenEvents;
+                simulatedHiddenEvents[nodeNr * nTypes + i] = nHiddenEvents;
                 int nSpikes = node.getParent().isFake() ? nHiddenEvents : nHiddenEvents + obsEvent;
                 double spikeShape = getSpikeShape(i);
                 double alpha = spikeShape * nSpikes;
@@ -768,6 +780,16 @@ public class BranchSpikePrior extends Distribution {
     public double getExpectedHiddenEvents(int nodeNr, int type) {
         if (nTypes == 1) return expectedHiddenEvents[nodeNr];
         return expectedHiddenEvents[nodeNr * nTypes + type];
+    }
+
+    /** True if the spikes were last drawn by sample(), so that the simulated hidden event counts are available. */
+    public boolean hasSimulatedHiddenEvents() {
+        return hiddenEventsSimulated;
+    }
+
+    /** Number of hidden speciation events drawn for the branch above the node and type by sample(). */
+    public double getSimulatedHiddenEvents(int nodeNr, int type) {
+        return simulatedHiddenEvents[nodeNr * nTypes + type];
     }
 
     /** Type probabilities at the parent node, i.e. of the observed speciation event at the start of the branch. */
