@@ -115,7 +115,7 @@ Notes:
 
 If you use this package, please cite:
 
-- **Multi-type Spike Model**
+- **Multi-Type Spike Model**
   Ciuffi, E., Bickel, B., Vaughan, T. G., & Stadler, T. (in preparation).
   *Modelling trait-dependent punctuated evolution: the role of terrain ruggedness in Indo-European
 diversification.*
