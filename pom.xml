@@ -5,8 +5,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.ewanciuffi</groupId>
-    <artifactId>beast-multitypespikemodel</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <artifactId>multitypespikemodel</artifactId>
+    <version>1.1.0</version>
 
     <name>Multi-type spike model</name>
     <description>Clock model with type-dependent spikes of change at branching events</description>
@@ -39,7 +39,7 @@
         <beast.version>2.8.0-rc1</beast.version>
         <beast.pkg.name>MultiTypeSpikeModel</beast.pkg.name>
         <beast.pkg.version>1.1.0</beast.pkg.version>
-        <bdmmprime.version>3.0.0</bdmmprime.version>
+        <bdmmprime.version>3.1.0</bdmmprime.version>
         <sa.version>2.3.0-beta1</sa.version>
     </properties>
 

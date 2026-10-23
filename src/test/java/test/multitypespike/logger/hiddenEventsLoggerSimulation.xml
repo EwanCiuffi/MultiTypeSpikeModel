@@ -1,0 +1,44 @@
+<beast version="2.8"
+       namespace="beast.base.spec.inference.parameter
+                 :beast.base.inference
+                 :beast.base.evolution.tree
+                 :beast.base.evolution.alignment
+                 :bdmmprime.distribution
+                 :bdmmprime.parameterization">
+
+    <taxonset spec="TaxonSet" id="taxonSet">
+        <taxon spec="Taxon" id="t1"/>
+        <taxon spec="Taxon" id="t2"/>
+        <taxon spec="Taxon" id="t3"/>
+        <taxon spec="Taxon" id="t4"/>
+        <taxon spec="Taxon" id="t5"/>
+    </taxonset>
+
+        <tree spec="beast.base.evolution.tree.TreeParser" id="tree" taxonset="@taxonSet" IsLabelledNewick="true"
+                   adjustTipHeights="false" newick="(t5:5.7,((t1:1,t2:2):1,(t3:3,t4:4):0.5):1.3):0.0;" offset="0"/>
+        <parameter id="lambda" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal">1.2</parameter>
+        <parameter id="mu" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal">1.0</parameter>
+        <parameter id="psi" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal">0.1</parameter>
+        <parameter id="r" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="UnitInterval" dimension="1">1.0</parameter>
+        <parameter id="spikes" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="NonNegativeReal">1</parameter>
+        <parameter id="spikeShape" spec="beast.base.spec.inference.parameter.RealVectorParam" domain="PositiveReal">0.2</parameter>
+
+    <run id="simulator" spec="DirectSimulator" nSamples="5">
+        <distribution id="BranchSpikePrior" spec="multitypespike.distribution.BranchSpikePrior"
+                      spikes="@spikes" spikeShape="@spikeShape" tree="@tree">
+            <parameterization id="parameterization" spec="CanonicalParameterization">
+                <processLength spec="beast.base.spec.inference.parameter.RealScalarParam" domain="NonNegativeReal" value="6.0"/>
+                <birthRate spec="SkylineVectorParameter" skylineValues="@lambda"/>
+                <deathRate spec="SkylineVectorParameter" skylineValues="@mu"/>
+                <samplingRate spec="SkylineVectorParameter" skylineValues="@psi"/>
+                <removalProb spec="SkylineVectorParameter" skylineValues="@r"/>
+            </parameterization>
+        </distribution>
+
+        <logger id="tracelog" spec="Logger" fileName="$(filebase).log" logEvery="1" sort="smart">
+            <log idref="spikes"/>
+            <log id="nHiddenEvents" spec="multitypespike.logger.HiddenEventsLogger" branchSpikePrior="@BranchSpikePrior"/>
+            <log id="expectedHiddenEvents" spec="multitypespike.logger.HiddenEventsLogger" branchSpikePrior="@BranchSpikePrior" logExpectedValue="true"/>
+        </logger>
+    </run>
+</beast>

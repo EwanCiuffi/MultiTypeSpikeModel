@@ -30,7 +30,7 @@
             <useProjectArtifact>true</useProjectArtifact>
             <scope>runtime</scope>
             <includes>
-                <include>io.github.ewanciuffi:beast-multitypespikemodel</include>
+                <include>io.github.ewanciuffi:multitypespikemodel</include>
             </includes>
         </dependencySet>
     </dependencySets>
