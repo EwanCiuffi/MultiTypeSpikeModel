@@ -52,7 +52,7 @@ lineages with different traits or in different geographic regions.
 
 ## Installation from source
 
-This branch targets **BEAST 2.8** (version 1.1.0). It requires BEAST 2.8.0 or later and **BDMM-Prime** 3.1.0 or later.
+This branch targets **BEAST 2.8** (version 2.0.0). It requires BEAST 2.8.0 or later and **BDMM-Prime** 3.1.0 or later.
 
 The build needs JDK 25 or later and Maven 3.9 or later.
 
