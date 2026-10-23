@@ -40,6 +40,7 @@ public class SaltativeProportionLogger extends BEASTObject implements Loggable {
 
     @Override
     public void log(long sample, PrintStream out) {
+        clockInput.get().invalidateCache();
         double totalChange = 0;
         double abruptChange = 0;
         double[] abruptChangePerType = new double[nTypes];

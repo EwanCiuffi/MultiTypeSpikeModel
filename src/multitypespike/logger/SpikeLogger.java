@@ -37,15 +37,17 @@ public class SpikeLogger extends CalculationNode implements Function, Loggable {
 
     @Override
     public double getArrayValue(int dim) {
-        if(nTypes == 1) {
-            return clockModelInput.get().getSpikeSize(dim);
-        } else if(!logPerType) {
-            return clockModelInput.get().getSpikeSize(dim);
-        } else {
+        if (logPerType) {
             int type = dim % nTypes;
             int nodeNr = dim / nTypes;
             return clockModelInput.get().getSpikeSize(nodeNr, type);
         }
+        // Summed from the per-type sizes, which bypass the clock's cache (stale when the clock is outside the posterior)
+        double total = 0;
+        for (int type = 0; type < nTypes; type++) {
+            total += clockModelInput.get().getSpikeSize(dim, type);
+        }
+        return total;
     }
 
 

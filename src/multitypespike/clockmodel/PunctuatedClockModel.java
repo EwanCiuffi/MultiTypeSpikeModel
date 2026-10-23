@@ -110,6 +110,14 @@ public class PunctuatedClockModel extends BranchRateModel.Base {
     }
 
     /**
+     * Marks the cached spike sums and relaxed rates as stale. Loggers call this before reading them, because
+     * the clock is not recalculated when it lies outside the posterior, as when sampling from the prior.
+     */
+    public void invalidateCache() {
+        cacheValid = false;
+    }
+
+    /**
      * Get the size of a spike (this will be zero if the node is the root or a sampled ancestor)
      * @param dim
      * @return
