@@ -384,11 +384,15 @@ public class BranchSpikePriorTest {
         double logP = bsp.calculateLogP();
 
         // This expected value comes directly from the total_logP output of generate_true_logdensity.R
-        double expectedLogP = -2.76114731;
+        double expectedLogP = -2.56800013;
 
         double tolerance = 1e-5;
         assertEquals("logP does not match exact R calculation.",
                 expectedLogP, logP, tolerance);
+
+        // A latent root spike of exactly zero has zero density under the pseudo-prior
+        bsp.spikesInput.get().setValue(2, 0.0);
+        assertEquals(Double.NEGATIVE_INFINITY, bsp.calculateLogP());
     }
 
     /**
@@ -467,11 +471,15 @@ public class BranchSpikePriorTest {
         double logP = bsp.calculateLogP();
 
         // This expected value comes directly from the total_logP output of generate_true_multitype_logdensity.R
-        double expectedLogP = -6.07916977;
+        double expectedLogP = -5.69287541;
 
         double tolerance = 1e-5;
         assertEquals("Multi-type logP does not match exact R calculation.",
                 expectedLogP, logP, tolerance);
+
+        // A latent root spike of exactly zero has zero density under the pseudo-prior
+        bsp.spikesInput.get().setValue(4, 0.0);
+        assertEquals(Double.NEGATIVE_INFINITY, bsp.calculateLogP());
     }
 
     /**

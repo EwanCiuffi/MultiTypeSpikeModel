@@ -85,9 +85,9 @@ pi_node1      <- c(0.7, 0.4)
 logP_node1 <- exact_multitype_node_logdensity(spikes_node1, exp_node1, pi_node1, spikeShapes, isFakeParent = FALSE)
 
 # --- Node 2 (Root pseudo-priors) ---
-# Hardcoded to Gamma(1.0, 1.0) / Exponential(1)
-logP_root_type0 <- dgamma(0.5, shape = 1.0, rate = 1.0, log = TRUE) 
-logP_root_type1 <- dgamma(0.5, shape = 1.0, rate = 1.0, log = TRUE)
+# Gamma(2, rate = 2) pseudo-prior for each type
+logP_root_type0 <- dgamma(0.5, shape = 2.0, rate = 2.0, log = TRUE)
+logP_root_type1 <- dgamma(0.5, shape = 2.0, rate = 2.0, log = TRUE)
 logP_root_total <- logP_root_type0 + logP_root_type1
 
 total_logP <- logP_node0 + logP_node1 + logP_root_total
