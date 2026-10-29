@@ -192,6 +192,29 @@ public class BranchSpikePrior extends Distribution {
         } else {
             sampleSingleTypeSpikes();
         }
+
+        // The MCMC state needs latent spikes with positive density under the pseudo-prior
+        initialiseZeroLatentSpikes();
+    }
+
+    /**
+     * Replaces latent spikes (origin and sampled ancestor branches) that are exactly zero, which have zero
+     * density under the pseudo-prior, by draws from the pseudo-prior. Used only to initialise the MCMC state;
+     * direct simulation from the prior (sample) keeps these spikes at zero.
+     */
+    private void initialiseZeroLatentSpikes() {
+        RealParameter spikes = spikesInput.get();
+        if (spikes.getDimension() != nodeCount * nTypes) return;
+
+        for (int nodeNr = 0; nodeNr < nodeCount; nodeNr++) {
+            Node node = treeInput.get().getNode(nodeNr);
+            if (!node.isRoot() && !node.isDirectAncestor()) continue;
+
+            for (int i = 0; i < nTypes; i++) {
+                int index = nodeNr * nTypes + i;
+                if (spikes.getValue(index) == 0.0) spikes.setValue(index, sampleLatentSpike(getSpikeShape(i)));
+            }
+        }
     }
 
 
@@ -294,6 +317,7 @@ public class BranchSpikePrior extends Distribution {
 
         if (!spikesInitialised) {
             if (initializeSpikesInput.get()) initialiseSpikes();
+            else initialiseZeroLatentSpikes();
             spikesInitialised = true;
         }
 
@@ -367,12 +391,9 @@ public class BranchSpikePrior extends Distribution {
             if (node.isRoot() || node.isDirectAncestor()) {
                 expectedHiddenEvents[nodeNr] = 0.0;
                 // Spikes = 0 for origin branch and sampled ancestor branches.
-                // Use a Gamma(1,1) = Exp(1) pseudo-prior for latent spikes when they are not
-                // included in the model. This facilitates transitions between models of
-                // different dimensions.
-
-                // Log density of Exp(1) is -x
-                logP -= branchSpike;
+                // Latent spikes follow a pseudo-prior, which facilitates transitions between
+                // models of different dimensions.
+                logP += logLatentSpikeDensity(branchSpike, spikeShape);
                 continue;
             }
 
@@ -450,15 +471,11 @@ public class BranchSpikePrior extends Distribution {
 
             if (node.isRoot() || node.isDirectAncestor()) {
                 // Spikes = 0 for origin branch and sampled ancestor branches.
-                // Use a Gamma(1,1) = Exp(1) pseudo-prior for latent spikes when they are not
-                // included in the model. This facilitates transitions between models of
-                // different dimensions.
-
+                // Latent spikes follow a pseudo-prior, which facilitates transitions between
+                // models of different dimensions.
                 for (int i = 0; i < nTypes; i++) {
                     double branchSpike = spikesInput.get().getValue(nodeNr * nTypes + i);
-
-                    // Log density of Exp(1) is -x
-                    logP -= branchSpike;
+                    logP += logLatentSpikeDensity(branchSpike, getSpikeShape(i));
                 }
                 continue;
             }
@@ -490,6 +507,25 @@ public class BranchSpikePrior extends Distribution {
         double alpha = spikeShape * nEvents;
         return alpha * Math.log(spikeShape) + (alpha - 1.0) * Math.log(spike) - spikeShape * spike
                 - Gamma.logGamma(alpha);
+    }
+
+    /**
+     * Log density of the Gamma(spikeShape, rate spikeShape) pseudo-prior of a latent spike on the origin
+     * branch or a sampled ancestor branch. A latent spike of exactly zero has density zero: the
+     * SpikeFlipOperator treats zero as a point mass, so any positive density at zero would add prior
+     * mass to latent spikes and thereby inflate the prior weight of each sampled ancestor.
+     */
+    public static double logLatentSpikeDensity(double spike, double spikeShape) {
+        return spike > 0.0 ? logSpikeDensity(spike, 1, spikeShape) : Double.NEGATIVE_INFINITY;
+    }
+
+    /**
+     * Draws a latent spike from its pseudo-prior.
+     */
+    private static double sampleLatentSpike(double spikeShape) {
+        // Randomizer.nextGamma takes a rate, hence spikeShape rather than 1/spikeShape
+        double spike = Randomizer.nextGamma(spikeShape, spikeShape);
+        return spike > 0.0 ? spike : Double.MIN_VALUE;
     }
 
     private static final double LOG_TAIL_TOLERANCE = Math.log(1e-12);
