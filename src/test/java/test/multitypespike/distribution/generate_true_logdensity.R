@@ -39,9 +39,9 @@ spike1 <- 2.5
 expEvents1 <- 1.2
 logP1 <- exact_marginal_logdensity(spike1, expEvents1, spikeShape, isFakeParent = FALSE)
 
-# Add the root pseudo-prior
+# Add the root pseudo-prior, Gamma(2, rate = 2)
 spike_root <- 0.5
-logP_root <- dgamma(spike_root, shape=1.0, scale=1.0, log=TRUE)
+logP_root <- dgamma(spike_root, shape=2.0, rate=2.0, log=TRUE)
 
 
 total_logP <- logP0 + logP1 + logP_root
@@ -49,7 +49,7 @@ total_logP <- logP0 + logP1 + logP_root
 
 cat(sprintf("Branch 0 logP: %.8f\n", logP0))
 cat(sprintf("Branch 1 logP: %.8f\n", logP1))
-cat(sprintf("Root logP: %.8f\n", logP1))
+cat(sprintf("Root logP: %.8f\n", logP_root))
 cat(sprintf("Total Expected logP: %.8f\n", total_logP))
 
 
