@@ -109,7 +109,20 @@ Notes:
 | `SaltativeProportionLogger` | Proportion of the total distance due to spikes, overall and by type. |
 | `NodeTypeProbabilityLogger` | Type probabilities of each node (multi-type analyses). |
 
+---
 
+## Examples
+
+The `examples` folder contains two analyses of 294 morphological characters for 70 early amniotes,
+from the BDMM-Prime macroevolution tutorial. The comments in each XML explain the choice of priors.
+
+- `amniotes_skyline.xml`: fossilised birth–death skyline tree prior, with rates that change at the
+  Carboniferous–Permian and Permian–Triassic boundaries. The spike indicator is estimated, which
+  compares the relaxed clock with and without spikes.
+- `amniotes_multitype.xml`: multi-type fossilised birth–death tree prior, with the region of each
+  fossil as its type and region-specific spike means.
+
+---
 
 ## Citation
 
@@ -117,8 +130,8 @@ If you use this package, please cite:
 
 - **Multi-Type Spike Model**
   Ciuffi, E., Bickel, B., Vaughan, T. G., & Stadler, T. (in preparation).
-  *Modelling trait-dependent punctuated evolution: the role of terrain ruggedness in Indo-European
-diversification.*
+  *Bayesian inference framework for trait-dependent punctuated evolution
+  reveals geographic variation in Indo-European lexical change.*
 
 - **Gamma Spike Model**
   Douglas, J., Bouckaert, R., Harris, S. C., Carter, C. W., & Wills, P. R. (2025).

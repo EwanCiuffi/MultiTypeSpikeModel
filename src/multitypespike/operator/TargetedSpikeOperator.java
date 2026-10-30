@@ -56,14 +56,13 @@ public class TargetedSpikeOperator extends Operator {
             double logQOld = 0.0;
             double logQNew = 0.0;
             for (int i = 0; i < nTypes; i++) {
-                // Draw directly from Exponential(1.0) / Gamma(1,1)
-                sNew[i] = Randomizer.nextExponential(1.0);
+                // Draw from the Gamma(2, scale 0.5) pseudo-prior; Randomizer.nextGamma takes a rate
+                sNew[i] = Randomizer.nextGamma(2.0, 2.0);
                 if (sNew[i] == 0.0) sNew[i] = 1e-15;
                 spikes.setValue(nodeNr * nTypes + i, sNew[i]);
 
-                // Log density of Exp(1.0) is -x
-                logQOld += -sOld[i];
-                logQNew += -sNew[i];
+                logQOld += BranchSpikePrior.logSpikeDensity(sOld[i], 1, 2.0);
+                logQNew += BranchSpikePrior.logSpikeDensity(sNew[i], 1, 2.0);
             }
             return logQOld - logQNew;
         }
